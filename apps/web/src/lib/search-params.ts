@@ -1,17 +1,12 @@
-import {
-  createSearchParamsCache,
-  parseAsInteger,
-  parseAsString,
-  parseAsStringEnum,
-} from "nuqs/server"
+import { parseAsString, parseAsStringEnum, createSearchParamsCache } from "nuqs/server"
 
-export const logsSearchParams = {
-  page: parseAsInteger.withDefault(1),
-  page_size: parseAsInteger.withDefault(50),
-  platform: parseAsString.withDefault(""),
-  search: parseAsString.withDefault(""),
+// Well-known URL params. Dynamic filter params (f.*) are handled separately
+// in useFilterParams.ts via useSearchParams() since their keys are runtime-defined.
+export const exploreSearchParams = {
+  q: parseAsString.withDefault(""),
+  view: parseAsStringEnum(["compact", "full"]).withDefault("full"),
   sort_by: parseAsString.withDefault(""),
   sort_dir: parseAsStringEnum(["asc", "desc"]).withDefault("asc"),
 }
 
-export const logsSearchParamsCache = createSearchParamsCache(logsSearchParams)
+export const exploreSearchParamsCache = createSearchParamsCache(exploreSearchParams)

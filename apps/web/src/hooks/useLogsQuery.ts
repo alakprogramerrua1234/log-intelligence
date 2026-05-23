@@ -18,3 +18,11 @@ export function usePlatforms() {
     staleTime: 5 * 60_000,
   })
 }
+
+export function useFilterCategories() {
+  return useQuery({
+    queryKey: ["filter-categories"],
+    queryFn: () => api.filters.categories(),
+    staleTime: 10 * 60_000,
+  })
+}
