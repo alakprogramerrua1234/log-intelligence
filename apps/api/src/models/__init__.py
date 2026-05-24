@@ -1,17 +1,21 @@
 from .base import Base
 from .platform import Platform
 from .log_source import LogSource
-from .log import Log
+from .event_id import EventId
+from .tactic import Tactic
 from .technique import Technique
-from .log_technique_mapping import LogTechniqueMapping
+from .subtechnique import Subtechnique
+from .detection import Detection
 from .filter_category import FilterCategory
 
 __all__ = [
     "Base",
     "Platform",
     "LogSource",
-    "Log",
+    "EventId",
+    "Tactic",
     "Technique",
-    "LogTechniqueMapping",
+    "Subtechnique",
+    "Detection",
     "FilterCategory",
 ]

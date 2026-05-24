@@ -4,11 +4,12 @@
 import type { FilterCategory, Log, PaginatedLogs } from "@/lib/types"
 
 export const MOCK_FILTER_CATEGORIES: FilterCategory[] = [
-  { key: "platform",   label: "Platform",   field_path: "log.platform.slug",           value_type: "enum",   ui_hint: "dropdown",     order: 1, enabled: true },
-  { key: "log_source", label: "Log Source", field_path: "log.log_source.name",          value_type: "string", ui_hint: "multiselect",  order: 2, enabled: true },
-  { key: "tactic",     label: "Tactic",     field_path: "mapping.technique.tactic",     value_type: "enum",   ui_hint: "multiselect",  order: 3, enabled: true },
-  { key: "event_id",   label: "Event ID",   field_path: "log.event_id",                 value_type: "string", ui_hint: "text",         order: 4, enabled: true },
-  { key: "channel",    label: "Channel",    field_path: "log.channel",                  value_type: "string", ui_hint: "text",         order: 5, enabled: true },
+  { key: "platform",     label: "Platform",     source_table: "platform",     value_column: "name", detection_fk: "platform_id",     value_type: "enum",   ui_hint: "dropdown",    order: 1, enabled: true },
+  { key: "log_source",   label: "Log Source",   source_table: "log_source",   value_column: "name", detection_fk: "log_source_id",   value_type: "string", ui_hint: "multiselect", order: 2, enabled: true },
+  { key: "event_id",     label: "Event ID",     source_table: "event_id",     value_column: "name", detection_fk: "event_id_id",     value_type: "string", ui_hint: "multiselect", order: 3, enabled: true },
+  { key: "tactic",       label: "Tactic",       source_table: "tactic",       value_column: "name", detection_fk: "tactic_id",       value_type: "enum",   ui_hint: "chip",        order: 4, enabled: true },
+  { key: "technique",    label: "Technique",    source_table: "technique",    value_column: "id",   detection_fk: "technique_id",    value_type: "string", ui_hint: "multiselect", order: 5, enabled: true },
+  { key: "subtechnique", label: "Sub-technique",source_table: "subtechnique", value_column: "id",   detection_fk: "subtechnique_id", value_type: "string", ui_hint: "multiselect", order: 6, enabled: true },
 ]
 
 const MOCK_LOGS: Log[] = [
@@ -18,8 +19,7 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Sysmon",
     event_id: "1",
     name: "Process Creation",
-    channel: "Microsoft-Windows-Sysmon/Operational",
-    provider: "Microsoft-Windows-Sysmon",
+        provider: "Microsoft-Windows-Sysmon",
     description: "Captures process creation events including full command line and parent process.",
     sample_fields: { Image: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe /c whoami", ParentImage: "C:\\Windows\\explorer.exe" },
     relevance: 92,
@@ -34,8 +34,7 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Sysmon",
     event_id: "3",
     name: "Network Connection",
-    channel: "Microsoft-Windows-Sysmon/Operational",
-    provider: "Microsoft-Windows-Sysmon",
+        provider: "Microsoft-Windows-Sysmon",
     description: "Logs outbound TCP/UDP connections with source and destination details.",
     sample_fields: { DestinationIp: "192.168.1.1", DestinationPort: "443", Protocol: "tcp" },
     relevance: 78,
@@ -50,7 +49,6 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Windows Security",
     event_id: "4624",
     name: "An account was successfully logged on",
-    channel: "Security",
     provider: "Microsoft-Windows-Security-Auditing",
     description: "Generates when a logon session is created. Includes logon type, subject, and account name.",
     sample_fields: { LogonType: "3", TargetUserName: "administrator", IpAddress: "10.0.0.5" },
@@ -66,7 +64,6 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Windows Security",
     event_id: "4625",
     name: "An account failed to log on",
-    channel: "Security",
     provider: "Microsoft-Windows-Security-Auditing",
     description: "Records failed logon attempts. Useful for detecting brute-force activity.",
     sample_fields: { TargetUserName: "administrator", LogonType: "3", SubStatus: "0xC000006A" },
@@ -81,8 +78,7 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Sysmon",
     event_id: "7",
     name: "Image Loaded",
-    channel: "Microsoft-Windows-Sysmon/Operational",
-    provider: "Microsoft-Windows-Sysmon",
+        provider: "Microsoft-Windows-Sysmon",
     description: "Logs DLL load events. High noise — typically filtered to unsigned or untrusted images.",
     sample_fields: { ImageLoaded: "C:\\Temp\\evil.dll", Signed: "false", Signature: "" },
     relevance: 65,
@@ -96,8 +92,7 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Sysmon",
     event_id: "11",
     name: "FileCreate",
-    channel: "Microsoft-Windows-Sysmon/Operational",
-    provider: "Microsoft-Windows-Sysmon",
+        provider: "Microsoft-Windows-Sysmon",
     description: "Captures file creation events including the process that created the file.",
     sample_fields: { TargetFilename: "C:\\Users\\Public\\payload.exe", CreationUtcTime: "2026-05-09 08:12:00.000" },
     relevance: 58,
@@ -111,7 +106,6 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "PowerShell",
     event_id: "4104",
     name: "Script Block Logging",
-    channel: "Microsoft-Windows-PowerShell/Operational",
     provider: "Microsoft-Windows-PowerShell",
     description: "Records the content of PowerShell script blocks as they are executed.",
     sample_fields: { ScriptBlockText: "Invoke-Mimikatz -DumpCreds", ScriptBlockId: "abc-123" },
@@ -127,7 +121,6 @@ const MOCK_LOGS: Log[] = [
     log_source_name: "Windows Security",
     event_id: "4688",
     name: "A new process has been created",
-    channel: "Security",
     provider: "Microsoft-Windows-Security-Auditing",
     description: "Logs process creation when process auditing is enabled. Less detail than Sysmon Event 1.",
     sample_fields: { NewProcessName: "C:\\Windows\\System32\\net.exe", CommandLine: "net user /domain" },
@@ -147,7 +140,6 @@ export function getMockLogs(filters: Record<string, string[]>, q: string): Pagin
     items = items.filter(
       (l) =>
         l.name.toLowerCase().includes(lower) ||
-        l.channel?.toLowerCase().includes(lower) ||
         l.event_id?.includes(lower) ||
         l.description?.toLowerCase().includes(lower),
     )

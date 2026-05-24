@@ -1,0 +1,8 @@
+platform,log_source,event_id,tactic,technique_id,technique_name,subtechnique_id,subtechnique_name
+Windows,Sysmon,1,execution,T1059,Command and Scripting Interpreter,T1059.001,PowerShell
+Windows,Sysmon,2,execution,T1059,Command and Scripting Interpreter,T1059.003,Windows Command Shell
+Windows,Sysmon,3,defense-evasion,T1055,Process Injection,,
+Windows,Sysmon,10,persistence,T1543,Create or Modify System Process,T1543.003,Windows Service
+Windows,Windows Security,4624,credential-access,T1003,OS Credential Dumping,T1003.001,LSASS Memory
+Windows,Windows Security,4624,lateral-movement,T1021,Remote Services,T1021.001,Remote Desktop Protocol
+Windows,Windows Security,4624,initial-access,T1078,Valid Accounts,,,

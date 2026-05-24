@@ -12,7 +12,7 @@ Documento vivo. Cualquier cambio estructural pasa primero por aquí.
 │  (procesa MITRE +   │
 │   produce dataset)  │
 └──────────┬──────────┘
-           │  dataset listo (JSON/CSV/Parquet)
+           │  CSV de detecciones
            ▼
 ┌──────────────────┐
 │  CLI de ingesta  │  ──►  PostgreSQL  ──►  Meilisearch
@@ -35,86 +35,113 @@ Documento vivo. Cualquier cambio estructural pasa primero por aquí.
 
 ## 2. Modelo de datos
 
-Tres entidades core, una pivote, y catálogos.
+Esquema en estrella: **dimensiones** pequeñas (id autoincremental + `name`), una mini-jerarquía MITRE (`technique` / `subtechnique`) con PK textual igual al ID de ATT&CK, y una **tabla de hechos `detection`** que materializa cada fila del CSV de ingesta como la combinación de FKs hacia esas dimensiones.
 
-### Entidades
+### Dimensiones
+
+Las cuatro tienen la misma forma: `id bigserial PK` + `name text UNIQUE`. La PK es el identificador estable interno; el `name` es lo que viaja por la red y aparece en la UI.
 
 **`platform`** — Windows, Linux, macOS, AWS, Azure, GCP, Okta, M365, etc.
 | Campo | Tipo | Notas |
 |---|---|---|
-| id | uuid PK | |
-| slug | text UNIQUE | `windows`, `linux`, `aws` |
-| name | text | "Microsoft Windows" |
-| category | text | `os`, `cloud`, `saas`, `network` |
-| icon | text | clave para asset estático |
+| id   | bigserial PK | autoincremental |
+| name | text UNIQUE  | "Windows", "AWS", "Okta" |
 
-**`log_source`** — agrupa logs por origen lógico (Sysmon, Security, CloudTrail, Okta System Log, etc.)
+**`log_source`** — origen lógico (Sysmon, Windows Security, CloudTrail, Okta System Log, …).
 | Campo | Tipo | Notas |
 |---|---|---|
-| id | uuid PK | |
-| platform_id | uuid FK → platform | |
-| name | text | "Sysmon", "Windows Security" |
-| description | text | |
-| collection_method | text[] | `agent`, `wef`, `api`, `syslog` |
+| id   | bigserial PK | |
+| name | text UNIQUE  | "Sysmon", "Windows Security", "CloudTrail" |
 
-**`log`** — el evento concreto. La fila central de la app.
+**`channel`** — canal/stream técnico.
 | Campo | Tipo | Notas |
 |---|---|---|
-| id | uuid PK | |
-| log_source_id | uuid FK → log_source | |
-| channel | text | "Microsoft-Windows-Sysmon/Operational" |
-| event_id | text | "1", "4624". Texto porque algunas plataformas no son numéricas. |
-| provider | text | "Microsoft-Windows-Sysmon" |
-| name | text | "Process Creation" |
-| description | text | |
-| sample_fields | jsonb | ejemplo de payload |
-| relevance | smallint | 0–100, calculado: cuántas técnicas detecta + criticidad |
-| created_at | timestamptz | |
+| id   | bigserial PK | |
+| name | text UNIQUE  | "Microsoft-Windows-Sysmon/Operational", "Security" |
 
-**`technique`** — técnicas de MITRE tal como las recibimos del proyecto upstream (no las descargamos ni parseamos aquí).
+**`tactic`** — táctica de MITRE ATT&CK.
 | Campo | Tipo | Notas |
 |---|---|---|
-| id | text PK | "T1059.001" (lo asigna upstream) |
-| name | text | |
-| tactic | text[] | una técnica puede vivir en múltiples tácticas |
-| description | text | |
-| url | text | enlace a attack.mitre.org (lo provee upstream) |
-| dataset_version | text | versión del dataset upstream del que vino esta fila |
+| id   | bigserial PK | |
+| name | text UNIQUE  | "execution", "persistence", … |
 
-**`log_technique_mapping`** — la pivote rica. Llega ya hecha desde upstream.
+### Mini-jerarquía MITRE
+
+La PK de `technique` y `subtechnique` **no** es autoincremental: es el propio ID de ATT&CK. Esto hace que upserts e idempotencia sean triviales (el ID natural ya identifica la fila).
+
+**`technique`**
 | Campo | Tipo | Notas |
 |---|---|---|
-| log_id | uuid FK → log | PK compuesta |
-| technique_id | text FK → technique | PK compuesta |
-| confidence | smallint | 0–100, viene de upstream |
-| notes | text | razonamiento (viene de upstream) |
-| dataset_version | text | versión del dataset que produjo este mapping |
-| created_at | timestamptz | timestamp de la ingesta local |
+| id   | text PK | "T1059", "T1078" — ID de ATT&CK |
+| name | text    | "Command and Scripting Interpreter" |
 
-**`filter_category`** — descubrimiento dinámico de qué se puede filtrar.
+**`subtechnique`** — opcional. FK al `technique` padre.
 | Campo | Tipo | Notas |
 |---|---|---|
-| key | text PK | identificador estable: `platform`, `log_source`, `event_id`, `tactic`, etc. |
-| label | text | nombre legible para la UI (i18n a futuro) |
-| field_path | text | de dónde sale el valor (ej. `log.channel`, `mapping.technique.tactic`) |
-| value_type | text | `string`, `enum`, `number` |
-| ui_hint | text | `dropdown`, `multiselect`, `text`, `chip` |
-| order | smallint | orden sugerido en UI |
-| enabled | boolean | apagar sin borrar |
+| id           | text PK                          | "T1059.001" |
+| name         | text                             | "PowerShell" |
+| technique_id | text FK → technique.id NOT NULL  | técnica padre |
 
-> Esta tabla es la fuente de verdad de **qué filtros existen**. Se popula por el CLI de ingesta (a partir de la metadata del dataset upstream) o por seed. El frontend pregunta `/filters/categories` y se autoconfigura.
+> Ni `technique` ni `subtechnique` se descargan ni parsean aquí — vienen ya construidas en el CSV upstream.
+
+### Tabla de hechos: `detection`
+
+**Cada fila del CSV de ingesta produce una fila en `detection`.** Es la combinación de dimensiones + (sub)técnica que afirma "este log, en este canal, detecta esta técnica para esta táctica en esta plataforma".
+
+| Campo            | Tipo                                  | Notas |
+|---|---|---|
+| id               | bigserial PK                          | autoincremental |
+| platform_id      | bigint FK → platform.id     NOT NULL  | |
+| log_source_id    | bigint FK → log_source.id   NOT NULL  | |
+| channel_id       | bigint FK → channel.id      NOT NULL  | |
+| tactic_id        | bigint FK → tactic.id       NOT NULL  | |
+| technique_id     | text   FK → technique.id    NOT NULL  | |
+| subtechnique_id  | text   FK → subtechnique.id NULL      | sin subtécnica = NULL |
+| created_at       | timestamptz                           | timestamp local de ingesta |
+
+**Constraint de unicidad** (la clave de la idempotencia del ingest — sin esto, reejecutar la carga duplicaría todo):
+
+```sql
+UNIQUE NULLS NOT DISTINCT
+  (platform_id, log_source_id, channel_id, tactic_id, technique_id, subtechnique_id)
+```
+
+> `NULLS NOT DISTINCT` (PostgreSQL 15+) es necesario porque, por defecto, Postgres considera dos `NULL` distintos en un `UNIQUE`. Sin esa cláusula, dos filas con la misma combinación pero `subtechnique_id = NULL` se duplicarían.
+
+### `filter_category` — qué se puede filtrar
+
+Catálogo dinámico. Cada categoría apunta a una **tabla** (dimensión, `technique` o `subtechnique`) de donde se obtienen sus valores y a la FK que usa para filtrar la tabla de hechos.
+
+| Campo         | Tipo     | Notas |
+|---|---|---|
+| key           | text PK  | identificador estable: `platform`, `log_source`, `channel`, `tactic`, `technique`, `subtechnique` |
+| label         | text     | nombre legible para la UI (i18n a futuro) |
+| source_table  | text     | tabla de origen: `platform`, `log_source`, `channel`, `tactic`, `technique`, `subtechnique` |
+| value_column  | text     | columna a mostrar al usuario (`name` para dimensiones; `id` o `name` para technique/subtechnique) |
+| detection_fk  | text     | columna de `detection` por la que se filtra: `platform_id`, `log_source_id`, `channel_id`, `tactic_id`, `technique_id`, `subtechnique_id` |
+| value_type    | text     | `string`, `enum`, `number` |
+| ui_hint       | text     | `dropdown`, `multiselect`, `text`, `chip` |
+| order         | smallint | orden sugerido en UI |
+| enabled       | boolean  | apagar sin borrar |
+
+**Cómo se usa:**
+1. El frontend pide `/filters/categories` y renderiza chips/dropdowns dinámicamente.
+2. Cuando el usuario selecciona valores, la API recibe `filter[<key>]=<name>`, resuelve `name → id` contra `source_table.value_column` y filtra `detection` por `detection_fk`.
+3. Añadir un filtro nuevo = insertar una fila aquí (apuntando a una dimensión ya existente). **Cero cambios en el frontend.**
 
 ### Índices clave
 
-- `log(log_source_id)`, `log(channel, event_id)` UNIQUE
-- `log_technique_mapping(technique_id)` para query inversa
-- GIN sobre `log.sample_fields` y `log.description tsvector`
+- Cada dimensión: el `UNIQUE(name)` ya implica índice.
+- `subtechnique(technique_id)` para navegar la jerarquía.
+- `detection`: el `UNIQUE NULLS NOT DISTINCT` cubre el lookup por combinación completa. Añadir índices simples por cada FK (`detection(platform_id)`, `detection(log_source_id)`, `detection(channel_id)`, `detection(tactic_id)`, `detection(technique_id)`, `detection(subtechnique_id)`) para los filtros más comunes.
 
 ### Diagrama
 
 ```
-platform 1───* log_source 1───* log *───* technique
-                                   (log_technique_mapping)
+platform ────┐
+log_source ──┤
+channel ─────┼──► detection ◄── technique ◄── subtechnique
+tactic ──────┘
 ```
 
 ---
@@ -173,7 +200,7 @@ El blueprint pide dos modos:
 La jerarquía concreta no se hardcodea en el código del frontend. Vive en una config del backend (por ejemplo `apps/api/src/config/hierarchy.py`) que enumera el orden de drill-down esperado, p. ej.:
 
 ```
-[ "platform", "log_source", "log", "technique" ]
+[ "platform", "log_source", "channel", "tactic", "technique", "subtechnique" ]
 ```
 
 Reglas generales de la vista comprimida (independientes del orden concreto, que es config):
@@ -232,11 +259,11 @@ El sistema jerárquico se implementa en el endpoint `/logs` consultando la confi
 ## 5. Búsqueda con Meilisearch
 
 **Índices:**
-- `logs`: documento aplanado por log con todos los campos potencialmente filtrables/searchable.
+- `detections`: documento aplanado por fila de `detection` con las dimensiones ya resueltas (joins materializados al indexar) y los campos potencialmente filtrables/searchable.
 - `techniques`: documentos por técnica.
 
 **Atributos configurables (no hardcodear):**
-- `filterableAttributes` en `logs` → se calcula a partir de `filter_category` (los `field_path` declarados que apunten a campos del log o de relaciones planas).
+- `filterableAttributes` en `detections` → se calcula a partir de `filter_category` (los `key` declarados ahí).
 - `searchableAttributes` y sus pesos → leídos de un YAML de config (`apps/api/src/search/config.yaml`) para no requerir cambios de código al añadir un campo.
 
 **Reindex:**
@@ -244,63 +271,64 @@ El sistema jerárquico se implementa en el endpoint `/logs` consultando la confi
 - Triggered automáticamente al final de cada ingesta (`src.ingest.load`).
 - En desarrollo: re-ejecutar el comando es la forma estándar de refrescar.
 
-**Documento de log en Meilisearch (forma orientativa, depende del dataset):**
+**Documento de `detection` en Meilisearch (joins ya resueltos al indexar):**
 
 ```json
 {
-  "id": "...",
-  "name": "Process Creation",
+  "id": 184213,
+  "platform": "Windows",
+  "log_source": "Sysmon",
   "channel": "Microsoft-Windows-Sysmon/Operational",
-  "event_id": "1",
-  "platform_slug": "windows",
-  "log_source_name": "Sysmon",
-  "description": "...",
-  "technique_ids": ["T1059.001", "T1106"],
-  "tactic": ["execution"],
-  "_meta": { "dataset_version": "2026.05.01" }
+  "tactic": "execution",
+  "technique_id": "T1059",
+  "technique_name": "Command and Scripting Interpreter",
+  "subtechnique_id": "T1059.001",
+  "subtechnique_name": "PowerShell"
 }
 ```
 
-> Los nombres concretos de campos los fija el dataset upstream. Si cambian, se ajusta el indexer; el frontend no necesita saberlos por nombre.
+> Los nombres de los atributos filtrables siguen las `key` de `filter_category`. Si se añade una dimensión nueva, se añade una fila a `filter_category` y se ajusta el indexer; el frontend no necesita saberlos por nombre.
 
 ---
 
 ## 6. Ingesta del dataset upstream
 
-Esta app **no procesa** datos de MITRE ni hace mapping logic. Recibe un dataset ya construido por un proyecto independiente del equipo, y lo carga.
+Esta app **no procesa** datos de MITRE ni hace mapping logic. Recibe un **CSV de detecciones** ya construido por un proyecto independiente del equipo, y lo carga en la tabla de hechos `detection`.
+
+**Formato del CSV** — una fila por detección, las siguientes columnas (orden estable, cabecera obligatoria):
+
+| Columna           | Obligatoria | Notas |
+|---|---|---|
+| platform          | sí | nombre legible. Se upserta en `platform.name`. |
+| log_source        | sí | se upserta en `log_source.name`. |
+| channel           | sí | se upserta en `channel.name`. |
+| tactic            | sí | se upserta en `tactic.name`. |
+| technique_id      | sí | ID de ATT&CK ("T1059"). Upsert en `technique`. |
+| technique_name    | sí | nombre legible de la técnica. |
+| subtechnique_id   | no | ID de ATT&CK ("T1059.001") o vacío. |
+| subtechnique_name | no | nombre de la subtécnica si aplica. |
+
+**Una fila del CSV → una fila en `detection`.** El `UNIQUE NULLS NOT DISTINCT` deduplica al cargar: reejecutar la misma ingesta es no-op.
 
 **CLI:**
 ```
-python -m src.ingest.load --source <ruta-o-url> [--dry-run] [--dataset-version 2026.05.01]
+python -m src.ingest.load --source <ruta-al-csv> [--dry-run]
 ```
 
 **Pasos del CLI:**
-1. **Leer** el dataset (formato a acordar — recomendado JSON Lines o Parquet por entidad: `platforms.jsonl`, `log_sources.jsonl`, `logs.jsonl`, `techniques.jsonl`, `mappings.jsonl`, y un `manifest.json` con la versión y la metadata de filtros).
-2. **Validar** contra Pydantic schemas en `apps/api/src/ingest/schemas.py`. Falla rápido si hay drift.
-3. **Upsert transaccional** por entidad. Estrategia idempotente por PK natural (slug, id de técnica, etc.).
-4. **Actualizar `filter_category`** desde la sección `filters` del manifest del dataset.
-5. **Reindexar Meilisearch** al final.
-6. **Reportar** al stdout: counts insertados/actualizados/skipped, duración, versión final.
+1. **Leer** el CSV en streaming (no cargar todo en memoria).
+2. **Validar** cada fila contra un Pydantic schema en `apps/api/src/ingest/schemas.py`. Falla rápido si hay columnas faltantes o tipos mal.
+3. **Upsert de dimensiones** (`platform`, `log_source`, `channel`, `tactic`) por `name` para obtener el `id`. Cachear en memoria los `name → id` para no repetir queries.
+4. **Upsert de `technique`** por PK natural: `INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`.
+5. **Upsert de `subtechnique`** con el mismo patrón + FK `technique_id`. Columna vacía en el CSV ⇒ `NULL` en `detection.subtechnique_id` (no se crea fila en `subtechnique`).
+6. **Insert en `detection`** con `INSERT ... ON CONFLICT DO NOTHING` apoyado en el `UNIQUE` sobre la combinación completa de FKs. Las filas duplicadas se descartan silenciosamente.
+7. **Sincronizar `filter_category`** (seed inicial — apuntando cada categoría a su `source_table` y `detection_fk`). Se mantiene estable después.
+8. **Reindexar Meilisearch** al final.
+9. **Reportar** al stdout: filas leídas, dimensiones nuevas insertadas por tabla, detections insertadas vs duplicadas, duración.
 
-**Manifest sugerido (`manifest.json`):**
+**Idempotencia:** correr la misma ingesta dos veces deja la DB idéntica. No hace falta truncar.
 
-```json
-{
-  "dataset_version": "2026.05.01",
-  "generated_at": "2026-05-08T12:00:00Z",
-  "entities": ["platforms", "log_sources", "logs", "techniques", "mappings"],
-  "filters": [
-    { "key": "platform", "label": "Platform", "field_path": "log.platform.slug",
-      "value_type": "enum", "ui_hint": "dropdown", "order": 1 },
-    { "key": "log_source", "label": "Log Source", "field_path": "log.log_source.name",
-      "value_type": "string", "ui_hint": "multiselect", "order": 2 }
-  ]
-}
-```
-
-> El número y nombre de los filtros está intencionalmente abierto. Lo decide el manifest del dataset upstream. Esta app se adapta.
-
-**Frecuencia:** manual / on-demand. No hay cron automático: cuando upstream publica una versión nueva, alguien dispara la ingesta.
+**Frecuencia:** manual / on-demand. No hay cron automático: cuando upstream publica un CSV nuevo, alguien dispara la ingesta.
 
 ---
 

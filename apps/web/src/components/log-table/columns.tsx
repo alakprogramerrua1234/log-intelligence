@@ -47,22 +47,6 @@ export const fullColumns = [
     size: 140,
     cell: (info) => <span className="font-mono text-xs text-zinc-400">{info.getValue()}</span>,
   }),
-  col.accessor("channel", {
-    header: () => (
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-        Channel
-      </span>
-    ),
-    size: 270,
-    cell: (info) => (
-      <span
-        className="block truncate font-mono text-[11px] text-zinc-500"
-        title={info.getValue() ?? ""}
-      >
-        {info.getValue() ?? "—"}
-      </span>
-    ),
-  }),
   col.accessor("relevance", {
     header: ({ column }) => <SortableHeader label="Relevance" column={column} />,
     size: 90,

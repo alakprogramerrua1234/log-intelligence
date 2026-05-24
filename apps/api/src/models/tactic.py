@@ -4,8 +4,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
 
-class Platform(Base):
-    __tablename__ = "platform"
+class Tactic(Base):
+    __tablename__ = "tactic"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)

@@ -3,7 +3,7 @@
 // ─── Data source switch ───────────────────────────────────────────────────────
 // Toggle USE_MOCK to false when the backend API is ready.
 // The real data path uses useLogsQuery (TanStack Query → api.logs.list).
-const USE_MOCK = true
+const USE_MOCK = false
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from "react"

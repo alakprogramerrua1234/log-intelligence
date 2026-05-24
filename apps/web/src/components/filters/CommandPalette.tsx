@@ -58,8 +58,7 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
           (l) =>
             !inputValue ||
             l.name.toLowerCase().includes(inputValue.toLowerCase()) ||
-            l.event_id?.includes(inputValue) ||
-            l.channel?.toLowerCase().includes(inputValue.toLowerCase()),
+            l.event_id?.includes(inputValue),
         )
         .slice(0, 5)
     : []
@@ -167,11 +166,6 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
                       <span className="text-zinc-200">{log.name}</span>
                       {log.event_id && (
                         <span className="ml-2 font-mono text-[10px] text-emerald-400">{log.event_id}</span>
-                      )}
-                      {log.channel && (
-                        <span className="ml-2 hidden font-mono text-[10px] text-zinc-600 sm:inline truncate">
-                          {log.channel}
-                        </span>
                       )}
                     </div>
                     <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-600">

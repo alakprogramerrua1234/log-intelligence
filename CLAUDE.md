@@ -104,7 +104,7 @@ log-intelligence/
 - **Routers finos**: parsear input, llamar a un service, devolver schema. Nada de SQL en routers.
 - **Repositories** envuelven SQLAlchemy. Los services no importan `Session` directamente.
 - Migraciones Alembic, una por PR. Nombre descriptivo: `2026_05_09_add_log_provider_index.py`.
-- Tablas en singular, `snake_case` (`log`, `technique`, `log_technique_mapping`).
+- Tablas en singular, `snake_case` (dimensiones: `platform`, `log_source`, `channel`, `tactic`; jerarquía MITRE: `technique`, `subtechnique`; hechos: `detection`).
 - Errores HTTP: usar `HTTPException` con códigos correctos. Nunca devolver 200 con `{"error": ...}`.
 
 ### Git
@@ -120,7 +120,7 @@ log-intelligence/
 # Levantar todo en local
 docker compose up -d            # postgres + meilisearch
 pnpm --filter web dev           # next dev :3000
-uv run --directory apps/api uvicorn src.main:app --reload  # api :8000
+uv run --directory apps/api uvicorn src.main:app --reload --port 8001  # api :8001
 
 # Migraciones
 uv run --directory apps/api alembic revision --autogenerate -m "descripcion"

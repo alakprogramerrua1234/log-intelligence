@@ -23,7 +23,6 @@ export interface Log {
   id: string
   log_source_id: string
   log_source_name: string
-  channel: string | null
   event_id: string | null
   provider: string | null
   name: string
@@ -52,7 +51,9 @@ export interface Technique {
 export interface FilterCategory {
   key: string
   label: string
-  field_path: string
+  source_table: string
+  value_column: string
+  detection_fk: string
   value_type: "string" | "enum" | "number"
   ui_hint: "dropdown" | "multiselect" | "text" | "chip"
   order: number
