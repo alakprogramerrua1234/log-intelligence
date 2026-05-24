@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from src.database import get_db
@@ -8,10 +8,10 @@ from src.schemas.detection import DetectionOut, PaginatedDetections, TechniqueRe
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
-_PAGE_SIZE = 200
+_MAX_PAGE = 500
 
 
-def _build_query(filters: dict[str, list[str]]):
+def _build_query(filters: dict[str, list[str]], q: str = ""):
     stmt = (
         select(
             Detection.id,
@@ -32,6 +32,20 @@ def _build_query(filters: dict[str, list[str]]):
         .join(Technique, Detection.technique_id == Technique.id)
         .outerjoin(Subtechnique, Detection.subtechnique_id == Subtechnique.id)
     )
+
+    if q:
+        term = f"%{q.lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(LogSource.name).like(term),
+                func.lower(EventId.name).like(term),
+                func.lower(Tactic.name).like(term),
+                func.lower(Technique.id).like(term),
+                func.lower(Technique.name).like(term),
+                func.lower(Subtechnique.id).like(term),
+                func.lower(Subtechnique.name).like(term),
+            )
+        )
 
     _filter_map: dict[str, object] = {
         "platform":     Platform.name,
@@ -54,6 +68,8 @@ def _build_query(filters: dict[str, list[str]]):
 @router.get("", response_model=PaginatedDetections)
 def list_logs(
     db: Session = Depends(get_db),
+    q: str = Query(default=""),
+    limit: int = Query(default=200, ge=1, le=_MAX_PAGE),
     filter_platform: list[str] = Query(default=[], alias="filter[platform]"),
     filter_log_source: list[str] = Query(default=[], alias="filter[log_source]"),
     filter_event_id: list[str] = Query(default=[], alias="filter[event_id]"),
@@ -69,25 +85,25 @@ def list_logs(
     if filter_technique:    filters["technique"]     = filter_technique
     if filter_subtechnique: filters["subtechnique"]  = filter_subtechnique
 
-    stmt = _build_query(filters)
+    stmt = _build_query(filters, q)
     total: int = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
-    rows = db.execute(stmt.limit(_PAGE_SIZE)).all()
+    rows = db.execute(stmt.limit(limit)).all()
 
     items: list[DetectionOut] = []
     for row in rows:
-        technique_id = row.sub_id or row.technique_id
-        technique_name = row.sub_name or row.technique_name
         items.append(
             DetectionOut(
                 id=str(row.id),
                 log_source_id=str(row.log_source_id),
                 log_source_name=row.log_source_name,
                 event_id=row.event_id_name,
-                name=technique_name,
+                name=row.sub_name or row.technique_name,
                 techniques=[
                     TechniqueRef(
-                        id=technique_id,
-                        name=technique_name,
+                        technique_id=row.technique_id,
+                        technique_name=row.technique_name,
+                        id=row.sub_id or row.technique_id,
+                        name=row.sub_name or row.technique_name,
                         tactic=[row.tactic_name],
                         confidence=100,
                     )

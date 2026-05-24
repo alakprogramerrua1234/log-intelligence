@@ -26,3 +26,13 @@ export function useFilterCategories() {
     staleTime: 10 * 60_000,
   })
 }
+
+export function useFilterValues(category: string | null, q: string) {
+  return useQuery({
+    queryKey: ["filter-values", category, q],
+    queryFn: () => api.filters.values(category!, q || undefined),
+    enabled: !!category,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  })
+}

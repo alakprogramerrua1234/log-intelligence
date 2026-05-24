@@ -2,8 +2,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class TechniqueRef(BaseModel):
-    id: str
-    name: str
+    technique_id: str    # parent technique, e.g. "T1059"
+    technique_name: str  # parent technique name
+    id: str              # subtechnique id (equals technique_id when no subtechnique)
+    name: str            # subtechnique name (equals technique_name when no subtechnique)
     tactic: list[str]
     confidence: int
 

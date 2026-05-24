@@ -2,30 +2,54 @@
 
 import { useEffect, useState } from "react"
 import { Command } from "cmdk"
-import { Search, Filter, FileText } from "lucide-react"
+import { Search, Filter, Loader2 } from "lucide-react"
 import { useQueryState, parseAsString } from "nuqs"
+import { useQuery } from "@tanstack/react-query"
 import { useFilterParams } from "@/hooks/useFilterParams"
-import type { FilterCategory, Log } from "@/lib/types"
+import { api } from "@/lib/api"
+import type { FilterCategory, SuggestItem } from "@/lib/types"
 
 interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categories: FilterCategory[]
-  // TODO: replace with real search results from /search/suggest
-  mockLogs?: Log[]
 }
 
-export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }: CommandPaletteProps) {
+// Color per category key — badge bg + text
+const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  platform:      { bg: "bg-slate-800",   text: "text-slate-300" },
+  log_source:    { bg: "bg-zinc-700",    text: "text-zinc-300"  },
+  event_id:      { bg: "bg-emerald-900", text: "text-emerald-400" },
+  tactic:        { bg: "bg-amber-900",   text: "text-amber-400"  },
+  technique:     { bg: "bg-sky-900",     text: "text-sky-400"    },
+  subtechnique:  { bg: "bg-violet-900",  text: "text-violet-400" },
+}
+
+function CategoryBadge({ category, label }: { category: string; label: string }) {
+  const colors = CATEGORY_COLORS[category] ?? { bg: "bg-zinc-800", text: "text-zinc-400" }
+  return (
+    <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${colors.bg} ${colors.text}`}>
+      {label}
+    </span>
+  )
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
+export function CommandPalette({ open, onOpenChange, categories }: CommandPaletteProps) {
   const [inputValue, setInputValue] = useState("")
   const [, setQ] = useQueryState("q", parseAsString.withDefault(""))
   const { setFilter, filters } = useFilterParams()
 
-  // Reset input when palette closes
-  useEffect(() => {
-    if (!open) setInputValue("")
-  }, [open])
+  useEffect(() => { if (!open) setInputValue("") }, [open])
 
-  // Keyboard shortcut: ⌘K / Ctrl+K
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -37,37 +61,42 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
     return () => document.removeEventListener("keydown", handler)
   }, [open, onOpenChange])
 
-  // Detect if user typed "category:" prefix to filter by category
+  // Detect "category:" prefix
   const colonIdx = inputValue.indexOf(":")
   const prefixedCategory = colonIdx > 0 ? inputValue.slice(0, colonIdx).toLowerCase() : null
-  const prefixedQuery = colonIdx > 0 ? inputValue.slice(colonIdx + 1).trim() : inputValue
+  const prefixedQuery    = colonIdx > 0 ? inputValue.slice(colonIdx + 1).trim() : inputValue
 
   const activeCategory = prefixedCategory
     ? categories.find((c) => c.key === prefixedCategory || c.label.toLowerCase() === prefixedCategory)
     : null
 
-  // TODO: replace with /search/suggest?category=<key>&q=<prefixedQuery>
-  const filterSuggestions: string[] = activeCategory
-    ? getMockFilterSuggestions(activeCategory.key, prefixedQuery)
-    : []
+  const debouncedPrefixedQuery = useDebounce(prefixedQuery, 200)
+  const debouncedFreeQuery     = useDebounce(!activeCategory ? inputValue : "", 300)
 
-  // TODO: replace with /logs?q=<inputValue>&limit=5 via Meilisearch
-  const logSuggestions: Log[] = !activeCategory
-    ? mockLogs
-        .filter(
-          (l) =>
-            !inputValue ||
-            l.name.toLowerCase().includes(inputValue.toLowerCase()) ||
-            l.event_id?.includes(inputValue),
-        )
-        .slice(0, 5)
-    : []
+  // Category-mode: fetch values for the chosen category
+  const valuesQuery = useQuery({
+    queryKey: ["filter-values", activeCategory?.key ?? null, debouncedPrefixedQuery],
+    queryFn:  () => api.filters.values(activeCategory!.key, debouncedPrefixedQuery || undefined),
+    enabled:  !!activeCategory,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  })
+
+  // Free-text mode: cross-category suggest
+  const suggestQuery = useQuery({
+    queryKey: ["suggest", debouncedFreeQuery],
+    queryFn:  () => api.filters.suggest(debouncedFreeQuery),
+    enabled:  !activeCategory && debouncedFreeQuery.length >= 1,
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  })
+
+  const filterValues: string[]    = valuesQuery.data   ?? []
+  const suggestions: SuggestItem[] = suggestQuery.data ?? []
 
   function handleSelectFilter(categoryKey: string, value: string) {
     const current = filters[categoryKey] ?? []
-    if (!current.includes(value)) {
-      setFilter(categoryKey, [...current, value])
-    }
+    if (!current.includes(value)) setFilter(categoryKey, [...current, value])
     onOpenChange(false)
   }
 
@@ -78,42 +107,44 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
 
   if (!open) return null
 
+  const isLoading =
+    (!!activeCategory && valuesQuery.isFetching) ||
+    (!activeCategory && inputValue.length >= 1 && suggestQuery.isFetching)
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={() => onOpenChange(false)}
-      />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
 
       <div className="relative w-full max-w-xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         <Command shouldFilter={false}>
+          {/* Input */}
           <div className="flex items-center gap-2 border-b border-zinc-800 px-3">
-            <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+            {isLoading
+              ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-zinc-500" />
+              : <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+            }
             <Command.Input
               value={inputValue}
               onValueChange={setInputValue}
-              placeholder="Search logs, or type platform: tactic: event_id: …"
+              placeholder="Search across all categories, or type platform: tactic: …"
               className="flex h-12 w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
               autoFocus
             />
           </div>
 
-          <Command.List className="max-h-[360px] overflow-y-auto p-1">
+          <Command.List className="max-h-[400px] overflow-y-auto p-1">
             <Command.Empty className="py-8 text-center text-sm text-zinc-600">
               No results
             </Command.Empty>
 
-            {/* Filter by category shortcuts */}
+            {/* Empty state: filter shortcuts */}
             {!activeCategory && inputValue === "" && (
-              <Command.Group heading={<GroupHeading>Filter by</GroupHeading>}>
+              <Command.Group heading={<GroupHeading>Filter by category</GroupHeading>}>
                 {categories.map((cat) => (
                   <Command.Item
                     key={cat.key}
                     value={`filter:${cat.key}`}
-                    onSelect={() => {
-                      setInputValue(`${cat.key}:`)
-                    }}
+                    onSelect={() => setInputValue(`${cat.key}:`)}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
                   >
                     <Filter className="h-3.5 w-3.5 text-zinc-600" />
@@ -124,59 +155,66 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
               </Command.Group>
             )}
 
-            {/* Filter value suggestions when user typed "category:" */}
+            {/* Category-prefix mode: show values for that category */}
             {activeCategory && (
               <Command.Group heading={<GroupHeading>{activeCategory.label}</GroupHeading>}>
-                {filterSuggestions.length === 0 && prefixedQuery && (
+                {filterValues.length === 0 && !valuesQuery.isFetching && prefixedQuery && (
                   <Command.Item
                     value={`filtervalue:${activeCategory.key}:${prefixedQuery}`}
                     onSelect={() => handleSelectFilter(activeCategory.key, prefixedQuery)}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
                   >
                     <Filter className="h-3.5 w-3.5 text-zinc-600" />
-                    Add <span className="text-emerald-400">{prefixedQuery}</span> as {activeCategory.label} filter
+                    Add <span className="ml-1 text-emerald-400">{prefixedQuery}</span>
+                    <span className="ml-1">as {activeCategory.label} filter</span>
                   </Command.Item>
                 )}
-                {filterSuggestions.map((val) => (
-                  <Command.Item
-                    key={val}
-                    value={`filtervalue:${activeCategory.key}:${val}`}
-                    onSelect={() => handleSelectFilter(activeCategory.key, val)}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
-                  >
-                    <Filter className="h-3.5 w-3.5 text-zinc-600" />
-                    {val}
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            )}
-
-            {/* Log search results */}
-            {logSuggestions.length > 0 && (
-              <Command.Group heading={<GroupHeading>Logs</GroupHeading>}>
-                {logSuggestions.map((log) => (
-                  <Command.Item
-                    key={log.id}
-                    value={`log:${log.id}`}
-                    onSelect={handleSearch}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-zinc-800 aria-selected:bg-zinc-800"
-                  >
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
-                    <div className="min-w-0">
-                      <span className="text-zinc-200">{log.name}</span>
-                      {log.event_id && (
-                        <span className="ml-2 font-mono text-[10px] text-emerald-400">{log.event_id}</span>
+                {filterValues.map((val) => {
+                  const isActive = filters[activeCategory.key]?.includes(val)
+                  return (
+                    <Command.Item
+                      key={val}
+                      value={`filtervalue:${activeCategory.key}:${val}`}
+                      onSelect={() => handleSelectFilter(activeCategory.key, val)}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                    >
+                      <Filter className="h-3.5 w-3.5 text-zinc-600" />
+                      <span className={isActive ? "text-emerald-400" : ""}>{val}</span>
+                      {isActive && (
+                        <span className="ml-auto font-mono text-[10px] text-emerald-700">active</span>
                       )}
-                    </div>
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-600">
-                      {log.log_source_name}
-                    </span>
-                  </Command.Item>
-                ))}
+                    </Command.Item>
+                  )
+                })}
               </Command.Group>
             )}
 
-            {/* Free search action */}
+            {/* Free-text mode: cross-category suggestions */}
+            {!activeCategory && suggestions.length > 0 && (
+              <Command.Group heading={<GroupHeading>Results</GroupHeading>}>
+                {suggestions.map((item, i) => {
+                  const isActive = filters[item.category]?.includes(item.value)
+                  return (
+                    <Command.Item
+                      key={`${item.category}:${item.value}:${i}`}
+                      value={`suggest:${item.category}:${item.value}`}
+                      onSelect={() => handleSelectFilter(item.category, item.value)}
+                      className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                    >
+                      <span className={`flex-1 truncate ${isActive ? "text-emerald-400" : "text-zinc-200"}`}>
+                        {item.display}
+                      </span>
+                      <CategoryBadge category={item.category} label={item.label} />
+                      {isActive && (
+                        <span className="font-mono text-[10px] text-emerald-700">active</span>
+                      )}
+                    </Command.Item>
+                  )
+                })}
+              </Command.Group>
+            )}
+
+            {/* Free search fallback */}
             {inputValue && !activeCategory && (
               <Command.Group>
                 <Command.Item
@@ -185,7 +223,7 @@ export function CommandPalette({ open, onOpenChange, categories, mockLogs = [] }
                   className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 aria-selected:bg-zinc-800"
                 >
                   <Search className="h-3.5 w-3.5 text-zinc-600" />
-                  Search for <span className="ml-1 text-zinc-200">&ldquo;{inputValue}&rdquo;</span>
+                  Search logs for <span className="ml-1 text-zinc-200">&ldquo;{inputValue}&rdquo;</span>
                 </Command.Item>
               </Command.Group>
             )}
@@ -208,16 +246,4 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   )
-}
-
-// TODO: replace with /search/suggest?category=<key>&q=<q>
-function getMockFilterSuggestions(categoryKey: string, q: string): string[] {
-  const all: Record<string, string[]> = {
-    platform:   ["windows", "linux", "macos", "aws", "azure", "gcp", "okta", "m365"],
-    log_source: ["Sysmon", "Windows Security", "PowerShell", "WMI", "AppLocker", "CloudTrail"],
-    tactic:     ["execution", "persistence", "privilege-escalation", "defense-evasion", "credential-access", "discovery", "lateral-movement", "command-and-control", "exfiltration", "impact", "initial-access", "collection"],
-    event_id:   ["1", "3", "4", "7", "8", "10", "11", "4624", "4625", "4688", "4698", "4104"],
-  }
-  const values = all[categoryKey] ?? []
-  return values.filter((v) => !q || v.toLowerCase().includes(q.toLowerCase()))
 }

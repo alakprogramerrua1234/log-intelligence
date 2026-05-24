@@ -202,7 +202,6 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         categories={resolvedCategories}
-        mockLogs={logs}
       />
     </div>
   )

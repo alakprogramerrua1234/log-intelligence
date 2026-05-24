@@ -1,4 +1,4 @@
-import type { FilterCategory, Log, PaginatedLogs, Platform } from "@/lib/types"
+import type { FilterCategory, Log, PaginatedLogs, Platform, SuggestItem } from "@/lib/types"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1"
 
@@ -48,7 +48,13 @@ export const api = {
     get: (id: string) => request<Log>(`/logs/${id}`),
   },
   filters: {
-    // GET /filters/categories — dynamic filter discovery
     categories: () => request<FilterCategory[]>("/filters/categories"),
+    values: (category: string, q?: string) => {
+      const params = new URLSearchParams({ category })
+      if (q) params.set("q", q)
+      return request<string[]>(`/filters/values?${params}`)
+    },
+    suggest: (q: string) =>
+      request<SuggestItem[]>(`/filters/suggest?q=${encodeURIComponent(q)}`),
   },
 }

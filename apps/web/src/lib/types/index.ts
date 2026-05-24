@@ -33,8 +33,10 @@ export interface Log {
 }
 
 export interface TechniqueRef {
-  id: string      // "T1059.001"
-  name: string
+  technique_id: string    // "T1059"   — parent technique
+  technique_name: string  // "Command and Scripting Interpreter"
+  id: string              // "T1059.001" — subtechnique (equals technique_id when no subtechnique)
+  name: string            // subtechnique name (equals technique_name when no subtechnique)
   tactic: string[]
   confidence: number
 }
@@ -45,6 +47,13 @@ export interface Technique {
   tactic: string[]
   description: string
   url: string
+}
+
+export interface SuggestItem {
+  display: string   // value shown in UI
+  value: string     // filter value sent to API
+  category: string  // filter category key
+  label: string     // human-readable category label
 }
 
 // FilterCategory mirrors filter_category table and /filters/categories response.

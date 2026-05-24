@@ -24,8 +24,8 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { Image: "C:\\Windows\\System32\\cmd.exe", CommandLine: "cmd.exe /c whoami", ParentImage: "C:\\Windows\\explorer.exe" },
     relevance: 92,
     techniques: [
-      { id: "T1059.003", name: "Windows Command Shell", tactic: ["execution"], confidence: 90 },
-      { id: "T1106",     name: "Native API",            tactic: ["execution"], confidence: 60 },
+      { technique_id: "T1059", technique_name: "Command and Scripting Interpreter", id: "T1059.003", name: "Windows Command Shell",  tactic: ["execution"], confidence: 90 },
+      { technique_id: "T1106", technique_name: "Native API",                        id: "T1106",     name: "Native API",            tactic: ["execution"], confidence: 60 },
     ],
   },
   {
@@ -39,8 +39,8 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { DestinationIp: "192.168.1.1", DestinationPort: "443", Protocol: "tcp" },
     relevance: 78,
     techniques: [
-      { id: "T1071.001", name: "Web Protocols",        tactic: ["command-and-control"], confidence: 75 },
-      { id: "T1041",     name: "Exfiltration Over C2", tactic: ["exfiltration"],        confidence: 50 },
+      { technique_id: "T1071", technique_name: "Application Layer Protocol", id: "T1071.001", name: "Web Protocols",        tactic: ["command-and-control"], confidence: 75 },
+      { technique_id: "T1041", technique_name: "Exfiltration Over C2",       id: "T1041",     name: "Exfiltration Over C2", tactic: ["exfiltration"],        confidence: 50 },
     ],
   },
   {
@@ -54,8 +54,8 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { LogonType: "3", TargetUserName: "administrator", IpAddress: "10.0.0.5" },
     relevance: 85,
     techniques: [
-      { id: "T1078", name: "Valid Accounts",          tactic: ["defense-evasion", "persistence", "privilege-escalation", "initial-access"], confidence: 80 },
-      { id: "T1021", name: "Remote Services",         tactic: ["lateral-movement"], confidence: 65 },
+      { technique_id: "T1078", technique_name: "Valid Accounts",   id: "T1078", name: "Valid Accounts",  tactic: ["defense-evasion", "persistence", "privilege-escalation", "initial-access"], confidence: 80 },
+      { technique_id: "T1021", technique_name: "Remote Services",  id: "T1021", name: "Remote Services", tactic: ["lateral-movement"], confidence: 65 },
     ],
   },
   {
@@ -69,7 +69,7 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { TargetUserName: "administrator", LogonType: "3", SubStatus: "0xC000006A" },
     relevance: 72,
     techniques: [
-      { id: "T1110", name: "Brute Force", tactic: ["credential-access"], confidence: 88 },
+      { technique_id: "T1110", technique_name: "Brute Force", id: "T1110", name: "Brute Force", tactic: ["credential-access"], confidence: 88 },
     ],
   },
   {
@@ -83,7 +83,7 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { ImageLoaded: "C:\\Temp\\evil.dll", Signed: "false", Signature: "" },
     relevance: 65,
     techniques: [
-      { id: "T1574.001", name: "DLL Search Order Hijacking", tactic: ["persistence", "privilege-escalation", "defense-evasion"], confidence: 70 },
+      { technique_id: "T1574", technique_name: "Hijack Execution Flow", id: "T1574.001", name: "DLL Search Order Hijacking", tactic: ["persistence", "privilege-escalation", "defense-evasion"], confidence: 70 },
     ],
   },
   {
@@ -97,7 +97,7 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { TargetFilename: "C:\\Users\\Public\\payload.exe", CreationUtcTime: "2026-05-09 08:12:00.000" },
     relevance: 58,
     techniques: [
-      { id: "T1105", name: "Ingress Tool Transfer", tactic: ["command-and-control"], confidence: 65 },
+      { technique_id: "T1105", technique_name: "Ingress Tool Transfer", id: "T1105", name: "Ingress Tool Transfer", tactic: ["command-and-control"], confidence: 65 },
     ],
   },
   {
@@ -111,8 +111,8 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { ScriptBlockText: "Invoke-Mimikatz -DumpCreds", ScriptBlockId: "abc-123" },
     relevance: 95,
     techniques: [
-      { id: "T1059.001", name: "PowerShell",          tactic: ["execution"],          confidence: 95 },
-      { id: "T1003.001", name: "LSASS Memory",        tactic: ["credential-access"],  confidence: 85 },
+      { technique_id: "T1059", technique_name: "Command and Scripting Interpreter", id: "T1059.001", name: "PowerShell",   tactic: ["execution"],         confidence: 95 },
+      { technique_id: "T1003", technique_name: "OS Credential Dumping",             id: "T1003.001", name: "LSASS Memory", tactic: ["credential-access"], confidence: 85 },
     ],
   },
   {
@@ -126,8 +126,8 @@ const MOCK_LOGS: Log[] = [
     sample_fields: { NewProcessName: "C:\\Windows\\System32\\net.exe", CommandLine: "net user /domain" },
     relevance: 70,
     techniques: [
-      { id: "T1087.002", name: "Domain Account",      tactic: ["discovery"],   confidence: 72 },
-      { id: "T1059.003", name: "Windows Command Shell", tactic: ["execution"], confidence: 60 },
+      { technique_id: "T1087", technique_name: "Account Discovery",             id: "T1087.002", name: "Domain Account",       tactic: ["discovery"],   confidence: 72 },
+      { technique_id: "T1059", technique_name: "Command and Scripting Interpreter", id: "T1059.003", name: "Windows Command Shell", tactic: ["execution"], confidence: 60 },
     ],
   },
 ]
