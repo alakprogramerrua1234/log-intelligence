@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-table"
 import { useQueryState, parseAsString, parseAsStringEnum } from "nuqs"
 import { ChevronUp, ChevronDown, Loader2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { useFilterParams } from "@/hooks/useFilterParams"
 import { useLogsQuery } from "@/hooks/useLogsQuery"
 import { getMockLogs, MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
@@ -23,6 +24,7 @@ import { FilterChips } from "@/components/filters/FilterChips"
 import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
+import { api } from "@/lib/api"
 import type { FilterCategory } from "@/lib/types"
 
 interface LogTableClientProps {
@@ -39,7 +41,17 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
   const [view] = useQueryState("view", parseAsStringEnum(["compact", "full"]).withDefault("full"))
   const { filters } = useFilterParams()
 
-  const resolvedCategories = USE_MOCK ? MOCK_FILTER_CATEGORIES : (categories ?? [])
+  const categoriesQuery = useQuery({
+    queryKey: ["filter-categories"],
+    queryFn: api.filters.categories,
+    enabled: !USE_MOCK,
+    staleTime: Infinity,
+  })
+
+  // Precedence: API data → prop → mock fallback
+  const resolvedCategories: FilterCategory[] = USE_MOCK
+    ? MOCK_FILTER_CATEGORIES
+    : (categoriesQuery.data?.length ? categoriesQuery.data : (categories?.length ? categories : MOCK_FILTER_CATEGORIES))
 
   // ── Data ──────────────────────────────────────────────────────────────────
   // MOCK path: synchronous, no network.

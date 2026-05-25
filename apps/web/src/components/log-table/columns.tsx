@@ -2,6 +2,7 @@ import { createColumnHelper } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { Log, TechniqueRef } from "@/lib/types"
 import { EventIdCell } from "./cells/EventIdCell"
+import { FilterableCell } from "./cells/FilterableCell"
 
 const col = createColumnHelper<Log>()
 
@@ -45,13 +46,19 @@ export const fullColumns = [
     header: ({ column }) => <SortableHeader label="Log Source" column={column} />,
     size: 150,
     cell: (info) => (
-      <span className="font-mono text-xs text-zinc-400">{info.getValue()}</span>
+      <FilterableCell category="log_source" value={info.getValue()}>
+        <span className="font-mono text-xs text-zinc-400">{info.getValue()}</span>
+      </FilterableCell>
     ),
   }),
   col.accessor("event_id", {
     header: ({ column }) => <SortableHeader label="Event ID" column={column} />,
     size: 95,
-    cell: (info) => <EventIdCell eventId={info.getValue()} />,
+    cell: (info) => (
+      <FilterableCell category="event_id" value={info.getValue()}>
+        <EventIdCell eventId={info.getValue()} />
+      </FilterableCell>
+    ),
   }),
   col.accessor("techniques", {
     id: "tactic",
@@ -65,10 +72,12 @@ export const fullColumns = [
       if (!tactic) return <span className="text-zinc-700">—</span>
       const extra = t.tactic.length - 1
       return (
-        <span className="font-mono text-xs text-zinc-300">
-          {tactic}
-          {extra > 0 && <span className="ml-1 text-zinc-600">+{extra}</span>}
-        </span>
+        <FilterableCell category="tactic" value={tactic}>
+          <span className="font-mono text-xs text-zinc-300">
+            {tactic}
+            {extra > 0 && <span className="ml-1 text-zinc-600">+{extra}</span>}
+          </span>
+        </FilterableCell>
       )
     },
   }),
@@ -83,10 +92,12 @@ export const fullColumns = [
       if (!t) return <span className="text-zinc-700">—</span>
       const extra = techniques.length - 1
       return (
-        <span className="font-mono text-xs text-zinc-300">
-          {t.technique_id}
-          {extra > 0 && <span className="ml-1 text-zinc-600">+{extra}</span>}
-        </span>
+        <FilterableCell category="technique" value={t.technique_id}>
+          <span className="font-mono text-xs text-zinc-300">
+            {t.technique_id}
+            {extra > 0 && <span className="ml-1 text-zinc-600">+{extra}</span>}
+          </span>
+        </FilterableCell>
       )
     },
   }),
@@ -98,7 +109,11 @@ export const fullColumns = [
     cell: (info) => {
       const t = primary(info.getValue())
       if (!t) return <span className="text-zinc-700">—</span>
-      return <span className="text-xs text-zinc-300">{t.technique_name}</span>
+      return (
+        <FilterableCell category="technique" value={t.technique_id}>
+          <span className="text-xs text-zinc-300">{t.technique_name}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("techniques", {
@@ -109,7 +124,11 @@ export const fullColumns = [
     cell: (info) => {
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-zinc-700">—</span>
-      return <span className="font-mono text-xs text-zinc-300">{t.id}</span>
+      return (
+        <FilterableCell category="subtechnique" value={t.id}>
+          <span className="font-mono text-xs text-zinc-300">{t.id}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("techniques", {
@@ -120,7 +139,11 @@ export const fullColumns = [
     cell: (info) => {
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-zinc-700">—</span>
-      return <span className="text-xs text-zinc-300">{t.name}</span>
+      return (
+        <FilterableCell category="subtechnique" value={t.id}>
+          <span className="text-xs text-zinc-300">{t.name}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("relevance", {
@@ -141,13 +164,19 @@ export const compactColumns = [
     header: ({ column }) => <SortableHeader label="Log Source" column={column} />,
     size: 150,
     cell: (info) => (
-      <span className="font-mono text-xs text-zinc-400">{info.getValue()}</span>
+      <FilterableCell category="log_source" value={info.getValue()}>
+        <span className="font-mono text-xs text-zinc-400">{info.getValue()}</span>
+      </FilterableCell>
     ),
   }),
   col.accessor("event_id", {
     header: ({ column }) => <SortableHeader label="Event ID" column={column} />,
     size: 95,
-    cell: (info) => <EventIdCell eventId={info.getValue()} />,
+    cell: (info) => (
+      <FilterableCell category="event_id" value={info.getValue()}>
+        <EventIdCell eventId={info.getValue()} />
+      </FilterableCell>
+    ),
   }),
   col.accessor("techniques", {
     id: "tactic",
@@ -159,7 +188,11 @@ export const compactColumns = [
       if (!t) return <span className="text-zinc-700">—</span>
       const tactic = t.tactic[0] ?? null
       if (!tactic) return <span className="text-zinc-700">—</span>
-      return <span className="font-mono text-xs text-zinc-300">{tactic}</span>
+      return (
+        <FilterableCell category="tactic" value={tactic}>
+          <span className="font-mono text-xs text-zinc-300">{tactic}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("techniques", {
@@ -170,7 +203,11 @@ export const compactColumns = [
     cell: (info) => {
       const t = primary(info.getValue())
       if (!t) return <span className="text-zinc-700">—</span>
-      return <span className="font-mono text-xs text-zinc-300">{t.technique_id}</span>
+      return (
+        <FilterableCell category="technique" value={t.technique_id}>
+          <span className="font-mono text-xs text-zinc-300">{t.technique_id}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("techniques", {
@@ -181,7 +218,11 @@ export const compactColumns = [
     cell: (info) => {
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-zinc-700">—</span>
-      return <span className="font-mono text-xs text-zinc-300">{t.id}</span>
+      return (
+        <FilterableCell category="subtechnique" value={t.id}>
+          <span className="font-mono text-xs text-zinc-300">{t.id}</span>
+        </FilterableCell>
+      )
     },
   }),
   col.accessor("relevance", {
