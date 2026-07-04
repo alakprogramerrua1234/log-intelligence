@@ -13,6 +13,7 @@ interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categories: FilterCategory[]
+  openWithCategory?: FilterCategory | null
 }
 
 // Color per category key — badge bg + text
@@ -43,7 +44,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced
 }
 
-export function CommandPalette({ open, onOpenChange, categories }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, categories, openWithCategory }: CommandPaletteProps) {
   const [inputValue, setInputValue] = useState("")
   const [pinnedCategory, setPinnedCategory] = useState<FilterCategory | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
@@ -51,11 +52,15 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
   const { setFilter, filters } = useFilterParams()
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      if (openWithCategory) setPinnedCategory(openWithCategory)
+    } else {
       setInputValue("")
       setPinnedCategory(null)
       setCategoryPickerOpen(false)
     }
+  // openWithCategory is only meaningful at the moment open transitions to true
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {

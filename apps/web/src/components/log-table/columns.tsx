@@ -1,29 +1,64 @@
-import { createColumnHelper } from "@tanstack/react-table"
-import { ArrowUpDown } from "lucide-react"
+import { createColumnHelper, type RowData } from "@tanstack/react-table"
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import type { Log, TechniqueRef } from "@/lib/types"
 import { EventIdCell } from "./cells/EventIdCell"
 import { FilterableCell } from "./cells/FilterableCell"
+
+declare module "@tanstack/react-table" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface TableMeta<TData extends RowData> {
+    openPaletteWithCategory?: (categoryKey: string) => void
+  }
+}
 
 const col = createColumnHelper<Log>()
 
 function SortableHeader({
   label,
   column,
+  onFilterClick,
 }: {
   label: string
   column: {
     getToggleSortingHandler: () => ((e: unknown) => void) | undefined
     getIsSorted: () => false | "asc" | "desc"
   }
+  onFilterClick?: () => void
 }) {
+  const sorted = column.getIsSorted()
+  const SortIcon = sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onFilterClick}
+        className="font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hover:text-zinc-300 transition-colors"
+        title={onFilterClick ? `Filter by ${label}` : undefined}
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        onClick={column.getToggleSortingHandler()}
+        className={`transition-colors ${sorted ? "text-zinc-300" : "text-zinc-700 hover:text-zinc-400"}`}
+        title={sorted === "asc" ? "Sorted ascending — click for descending" : sorted === "desc" ? "Sorted descending — click to clear" : "Sort"}
+      >
+        <SortIcon className="h-2.5 w-2.5" />
+      </button>
+    </div>
+  )
+}
+
+function FilterableHeader({ label, onFilterClick }: { label: string; onFilterClick: () => void }) {
   return (
     <button
       type="button"
-      className="flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hover:text-zinc-400"
-      onClick={column.getToggleSortingHandler()}
+      onClick={onFilterClick}
+      className="font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hover:text-zinc-300 transition-colors"
+      title={`Filter by ${label}`}
     >
       {label}
-      <ArrowUpDown className="h-2.5 w-2.5 opacity-50" />
     </button>
   )
 }
@@ -43,7 +78,13 @@ function primary(techniques: TechniqueRef[]): TechniqueRef | null {
 // Full view: log_source → event_id → tactic → technique_id → technique_name → subtechnique_id → subtechnique_name → ranking
 export const fullColumns = [
   col.accessor("log_source_name", {
-    header: ({ column }) => <SortableHeader label="Log Source" column={column} />,
+    header: ({ column, table }) => (
+      <SortableHeader
+        label="Log Source"
+        column={column}
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("log_source")}
+      />
+    ),
     size: 150,
     cell: (info) => (
       <FilterableCell category="log_source" value={info.getValue()}>
@@ -52,7 +93,13 @@ export const fullColumns = [
     ),
   }),
   col.accessor("event_id", {
-    header: ({ column }) => <SortableHeader label="Event ID" column={column} />,
+    header: ({ column, table }) => (
+      <SortableHeader
+        label="Event ID"
+        column={column}
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("event_id")}
+      />
+    ),
     size: 95,
     cell: (info) => (
       <FilterableCell category="event_id" value={info.getValue()}>
@@ -62,7 +109,12 @@ export const fullColumns = [
   }),
   col.accessor("techniques", {
     id: "tactic",
-    header: () => <StaticHeader label="Tactic" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Tactic"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("tactic")}
+      />
+    ),
     size: 160,
     enableSorting: false,
     cell: (info) => {
@@ -83,7 +135,12 @@ export const fullColumns = [
   }),
   col.accessor("techniques", {
     id: "technique_id",
-    header: () => <StaticHeader label="Technique ID" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Technique ID"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("technique")}
+      />
+    ),
     size: 110,
     enableSorting: false,
     cell: (info) => {
@@ -103,7 +160,12 @@ export const fullColumns = [
   }),
   col.accessor("techniques", {
     id: "technique_name",
-    header: () => <StaticHeader label="Technique Name" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Technique Name"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("technique")}
+      />
+    ),
     size: 210,
     enableSorting: false,
     cell: (info) => {
@@ -118,7 +180,12 @@ export const fullColumns = [
   }),
   col.accessor("techniques", {
     id: "subtechnique_id",
-    header: () => <StaticHeader label="Subtechnique ID" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Subtechnique ID"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("subtechnique")}
+      />
+    ),
     size: 130,
     enableSorting: false,
     cell: (info) => {
@@ -133,7 +200,12 @@ export const fullColumns = [
   }),
   col.accessor("techniques", {
     id: "subtechnique_name",
-    header: () => <StaticHeader label="Subtechnique Name" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Subtechnique Name"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("subtechnique")}
+      />
+    ),
     size: 200,
     enableSorting: false,
     cell: (info) => {
@@ -161,7 +233,13 @@ export const fullColumns = [
 // Compact view: same order, technique_name and subtechnique_name omitted to preserve density
 export const compactColumns = [
   col.accessor("log_source_name", {
-    header: ({ column }) => <SortableHeader label="Log Source" column={column} />,
+    header: ({ column, table }) => (
+      <SortableHeader
+        label="Log Source"
+        column={column}
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("log_source")}
+      />
+    ),
     size: 150,
     cell: (info) => (
       <FilterableCell category="log_source" value={info.getValue()}>
@@ -170,7 +248,13 @@ export const compactColumns = [
     ),
   }),
   col.accessor("event_id", {
-    header: ({ column }) => <SortableHeader label="Event ID" column={column} />,
+    header: ({ column, table }) => (
+      <SortableHeader
+        label="Event ID"
+        column={column}
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("event_id")}
+      />
+    ),
     size: 95,
     cell: (info) => (
       <FilterableCell category="event_id" value={info.getValue()}>
@@ -180,7 +264,12 @@ export const compactColumns = [
   }),
   col.accessor("techniques", {
     id: "tactic",
-    header: () => <StaticHeader label="Tactic" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Tactic"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("tactic")}
+      />
+    ),
     size: 140,
     enableSorting: false,
     cell: (info) => {
@@ -197,7 +286,12 @@ export const compactColumns = [
   }),
   col.accessor("techniques", {
     id: "technique_id",
-    header: () => <StaticHeader label="Technique ID" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Technique ID"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("technique")}
+      />
+    ),
     size: 110,
     enableSorting: false,
     cell: (info) => {
@@ -212,7 +306,12 @@ export const compactColumns = [
   }),
   col.accessor("techniques", {
     id: "subtechnique_id",
-    header: () => <StaticHeader label="Subtechnique ID" />,
+    header: ({ table }) => (
+      <FilterableHeader
+        label="Subtechnique ID"
+        onFilterClick={() => table.options.meta?.openPaletteWithCategory?.("subtechnique")}
+      />
+    ),
     size: 130,
     enableSorting: false,
     cell: (info) => {

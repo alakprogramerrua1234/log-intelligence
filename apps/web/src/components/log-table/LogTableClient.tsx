@@ -35,6 +35,7 @@ interface LogTableClientProps {
 
 export function LogTableClient({ categories, platformName }: LogTableClientProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteCategory, setPaletteCategory] = useState<import("@/lib/types").FilterCategory | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
 
   const [q] = useQueryState("q", parseAsString.withDefault(""))
@@ -59,10 +60,13 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
 
   // REAL path: swap USE_MOCK to false and this hook takes over.
   // TODO: pass cursor for next-page when implementing infinite scroll.
+  const sortBy  = sorting[0]?.id
+  const sortDir = sorting[0]?.desc ? "desc" : "asc"
+
   const realQuery = useLogsQuery(
     USE_MOCK
       ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
-      : { q, filters, view },
+      : { q, filters, view, sort_by: sortBy, sort_dir: sortDir },
   )
 
   const logs = USE_MOCK ? (mockResult?.items ?? []) : (realQuery.data?.items ?? [])
@@ -80,7 +84,14 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    manualSorting: !USE_MOCK,  // when real API is used, sorting is server-driven
+    manualSorting: !USE_MOCK,
+    meta: {
+      openPaletteWithCategory: (categoryKey: string) => {
+        const cat = resolvedCategories.find((c) => c.key === categoryKey) ?? null
+        setPaletteCategory(cat)
+        setPaletteOpen(true)
+      },
+    },
   })
 
   return (
@@ -212,8 +223,9 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── Command Palette ── */}
       <CommandPalette
         open={paletteOpen}
-        onOpenChange={setPaletteOpen}
+        onOpenChange={(v) => { setPaletteOpen(v); if (!v) setPaletteCategory(null) }}
         categories={resolvedCategories}
+        openWithCategory={paletteCategory}
       />
     </div>
   )

@@ -1,5 +1,8 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import asc, desc, func, or_, select
+from sqlalchemy.sql import Select
 from sqlalchemy.orm import Session
 
 from src.database import get_db
@@ -10,8 +13,20 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 
 _MAX_PAGE = 500
 
+_SORT_COLUMNS: dict[str, Any] = {
+    "log_source_name": LogSource.name,
+    "event_id":        EventId.name,
+    "tactic":          Tactic.name,
+    "technique_id":    Technique.id,
+}
 
-def _build_query(filters: dict[str, list[str]], q: str = ""):
+
+def _build_query(
+    filters: dict[str, list[str]],
+    q: str = "",
+    sort: str = "",
+    sort_dir: str = "asc",
+) -> Select[Any]:
     stmt = (
         select(
             Detection.id,
@@ -62,6 +77,13 @@ def _build_query(filters: dict[str, list[str]], q: str = ""):
         lower_vals = [v.lower() for v in values]
         stmt = stmt.where(func.lower(col).in_(lower_vals))
 
+    sort_col = _SORT_COLUMNS.get(sort)
+    if sort_col is not None:
+        order_fn = desc if sort_dir == "desc" else asc
+        stmt = stmt.order_by(order_fn(sort_col))
+    else:
+        stmt = stmt.order_by(asc(LogSource.name), asc(EventId.name))
+
     return stmt
 
 
@@ -70,6 +92,8 @@ def list_logs(
     db: Session = Depends(get_db),
     q: str = Query(default=""),
     limit: int = Query(default=200, ge=1, le=_MAX_PAGE),
+    sort: str = Query(default=""),
+    sort_dir: str = Query(default="asc", pattern="^(asc|desc)$"),
     filter_platform: list[str] = Query(default=[], alias="filter[platform]"),
     filter_log_source: list[str] = Query(default=[], alias="filter[log_source]"),
     filter_event_id: list[str] = Query(default=[], alias="filter[event_id]"),
@@ -85,7 +109,7 @@ def list_logs(
     if filter_technique:    filters["technique"]     = filter_technique
     if filter_subtechnique: filters["subtechnique"]  = filter_subtechnique
 
-    stmt = _build_query(filters, q)
+    stmt = _build_query(filters, q, sort=sort, sort_dir=sort_dir)
     total: int = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     rows = db.execute(stmt.limit(limit)).all()
 
