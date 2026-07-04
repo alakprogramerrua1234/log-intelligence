@@ -43,3 +43,15 @@ htmlcov/
 # Datos locales
 docker-volumes/
 dumps/
+
+# Datasets de ingesta (los produce el proyecto upstream, se regeneran; no versionar)
+# Se conserva sample.csv como ejemplo del formato esperado.
+data/*.csv
+data/*.jsonl
+data/*.parquet
+data/*.ndjson
+*.sqlite
+*.sqlite3
+*.db
+!data/sample.csv
+!data/.gitkeep
