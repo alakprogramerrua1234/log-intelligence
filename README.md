@@ -67,19 +67,19 @@ cp apps/api/.env.example apps/api/.env
 # 3. Levantar Postgres + Meilisearch
 docker compose up -d
 
-# 4. Instalar dependencias
+# 4. Instalar dependencias (web)
 pnpm install
+
+# 5. Instalar dependencias (api)
 uv sync --directory apps/api
 
-# 5. Migraciones
+# 6. Migraciones
 uv run --directory apps/api alembic upgrade head
 
-# 6. Ingesta del dataset upstream (formato y origen a acordar con ese equipo)
+# 7. Ingesta del dataset upstream (formato y origen a acordar con ese equipo) y arrancar dev
 uv run --directory apps/api python -m src.ingest.load --source <ruta-o-url>
-
-# 7. Arrancar dev
-pnpm --filter web dev                     # http://localhost:3000
-uv run --directory apps/api uvicorn src.main:app --reload  # http://localhost:8000
+pnpm --filter web dev                                                      # http://localhost:3000
+uv run --directory apps/api uvicorn src.main:app --reload --port 8001      # http://localhost:8001
 ```
 
 ## Scripts útiles
@@ -91,7 +91,7 @@ uv run --directory apps/api uvicorn src.main:app --reload  # http://localhost:80
 | `pnpm --filter web typecheck` | `tsc --noEmit` |
 | `pnpm --filter web lint` | ESLint |
 | `pnpm --filter web test` | Vitest |
-| `uv run --directory apps/api uvicorn src.main:app --reload` | API dev |
+| `uv run --directory apps/api uvicorn src.main:app --reload --port 8001` | API dev |
 | `uv run --directory apps/api alembic revision --autogenerate -m "..."` | Nueva migración |
 | `uv run --directory apps/api alembic upgrade head` | Aplicar migraciones |
 | `uv run --directory apps/api pytest` | Tests del backend |
@@ -104,7 +104,7 @@ uv run --directory apps/api uvicorn src.main:app --reload  # http://localhost:80
 | Servicio | Puerto |
 |---|---|
 | Web (Next.js) | 3000 |
-| API (FastAPI) | 8000 |
+| API (FastAPI) | 8001 |
 | PostgreSQL | 5432 |
 | Meilisearch | 7700 |
 
