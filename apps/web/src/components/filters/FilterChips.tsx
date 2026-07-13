@@ -22,14 +22,14 @@ export function FilterChips({ categories }: FilterChipsProps) {
         values.map((value) => (
           <span
             key={`${key}:${value}`}
-            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300"
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-1 px-2 py-0.5 text-xs text-fg-2"
           >
-            <span className="text-zinc-500">{categoryLabel(key)}:</span>
+            <span className="text-dim">{categoryLabel(key)}:</span>
             <span>{value}</span>
             <button
               type="button"
               onClick={() => removeFilterValue(key, value)}
-              className="ml-0.5 rounded-full text-zinc-500 hover:text-zinc-200"
+              className="ml-0.5 rounded-full text-dim hover:text-foreground"
               aria-label={`Remove ${key}:${value} filter`}
             >
               <X className="h-3 w-3" />
@@ -42,7 +42,7 @@ export function FilterChips({ categories }: FilterChipsProps) {
         <button
           type="button"
           onClick={clearAllFilters}
-          className="text-xs text-zinc-600 hover:text-zinc-400"
+          className="text-xs text-dim hover:text-fg-2"
         >
           Clear all
         </button>
