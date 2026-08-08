@@ -7,8 +7,8 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 border-b border-line bg-background/90 backdrop-blur-sm">
       <div className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4">
         <Link href="/" className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono text-sm font-bold tracking-tight text-foreground">
-            LOG<span className="text-accent">INT</span>
+          <span className="text-sm font-bold tracking-tight text-foreground">
+            Log <span className="text-accent">Intelligence</span>
           </span>
         </Link>
 
@@ -30,6 +30,12 @@ export function SiteHeader() {
             className="rounded px-3 py-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             Explore
+          </Link>
+          <Link
+            href="/exploit"
+            className="rounded px-3 py-1.5 text-xs text-fg-2 transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            Exploit
           </Link>
           <Link
             href="/coverage"

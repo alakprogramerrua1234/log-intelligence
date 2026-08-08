@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowRight, Database, GitBranch, Plus, Server, Shield, Users } from "lucide-react"
+import { ArrowRight, Database, FlaskConical, GitBranch, Plus, Server, Shield, Users } from "lucide-react"
 import { getMockLogs } from "@/lib/mock-data"
 import { PLATFORM_GROUPS } from "@/lib/platforms"
 
@@ -66,6 +66,13 @@ export default function HomePage() {
               >
                 Explore logs
                 <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                href="/exploit"
+                className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-surface-2"
+              >
+                <FlaskConical className="h-3.5 w-3.5" />
+                Exploit logs
               </Link>
               <Link
                 href="/explore"
