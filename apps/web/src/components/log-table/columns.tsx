@@ -8,6 +8,9 @@ declare module "@tanstack/react-table" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface TableMeta<TData extends RowData> {
     openPaletteWithCategory?: (categoryKey: string) => void
+    /** Filtros activos, calculados una vez por el padre (no por celda). */
+    filters?: Record<string, string[]>
+    addFilter?: (category: string, value: string) => void
   }
 }
 
@@ -94,7 +97,7 @@ export const fullColumns = [
     ),
     size: 150,
     cell: (info) => (
-      <FilterableCell category="log_source" value={info.getValue()}>
+      <FilterableCell category="log_source" value={info.getValue()} table={info.table}>
         <span className="font-mono text-xs text-dim">{info.getValue()}</span>
       </FilterableCell>
     ),
@@ -109,7 +112,7 @@ export const fullColumns = [
     ),
     size: 95,
     cell: (info) => (
-      <FilterableCell category="event_id" value={info.getValue()}>
+      <FilterableCell category="event_id" value={info.getValue()} table={info.table}>
         <EventIdCell eventId={info.getValue()} />
       </FilterableCell>
     ),
@@ -131,7 +134,7 @@ export const fullColumns = [
       if (!tactic) return <span className="text-faint">—</span>
       const extra = t.tactic.length - 1
       return (
-        <FilterableCell category="tactic" value={tactic}>
+        <FilterableCell category="tactic" value={tactic} table={info.table}>
           <span className="font-mono text-xs text-fg-2">
             {tactic}
             {extra > 0 && <span className="ml-1 text-faint">+{extra}</span>}
@@ -156,7 +159,7 @@ export const fullColumns = [
       if (!t) return <span className="text-faint">—</span>
       const extra = techniques.length - 1
       return (
-        <FilterableCell category="technique" value={t.technique_id}>
+        <FilterableCell category="technique" value={t.technique_id} table={info.table}>
           <span className="font-mono text-xs font-semibold text-accent">
             {t.technique_id}
             {extra > 0 && <span className="ml-1 font-normal text-faint">+{extra}</span>}
@@ -179,7 +182,7 @@ export const fullColumns = [
       const t = primary(info.getValue())
       if (!t) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="technique" value={t.technique_id}>
+        <FilterableCell category="technique" value={t.technique_id} table={info.table}>
           <span className="text-xs text-foreground">{t.technique_name}</span>
         </FilterableCell>
       )
@@ -199,7 +202,7 @@ export const fullColumns = [
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="subtechnique" value={t.id}>
+        <FilterableCell category="subtechnique" value={t.id} table={info.table}>
           <span className="font-mono text-xs text-dim">{t.id}</span>
         </FilterableCell>
       )
@@ -219,7 +222,7 @@ export const fullColumns = [
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="subtechnique" value={t.id}>
+        <FilterableCell category="subtechnique" value={t.id} table={info.table}>
           <span className="text-xs text-fg-2">{t.name}</span>
         </FilterableCell>
       )
@@ -254,7 +257,7 @@ export const compactColumns = [
     ),
     size: 150,
     cell: (info) => (
-      <FilterableCell category="log_source" value={info.getValue()}>
+      <FilterableCell category="log_source" value={info.getValue()} table={info.table}>
         <span className="font-mono text-xs text-dim">{info.getValue()}</span>
       </FilterableCell>
     ),
@@ -269,7 +272,7 @@ export const compactColumns = [
     ),
     size: 95,
     cell: (info) => (
-      <FilterableCell category="event_id" value={info.getValue()}>
+      <FilterableCell category="event_id" value={info.getValue()} table={info.table}>
         <EventIdCell eventId={info.getValue()} />
       </FilterableCell>
     ),
@@ -290,7 +293,7 @@ export const compactColumns = [
       const tactic = t.tactic[0] ?? null
       if (!tactic) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="tactic" value={tactic}>
+        <FilterableCell category="tactic" value={tactic} table={info.table}>
           <span className="font-mono text-xs text-fg-2">{tactic}</span>
         </FilterableCell>
       )
@@ -310,7 +313,7 @@ export const compactColumns = [
       const t = primary(info.getValue())
       if (!t) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="technique" value={t.technique_id}>
+        <FilterableCell category="technique" value={t.technique_id} table={info.table}>
           <span className="font-mono text-xs font-semibold text-accent">{t.technique_id}</span>
         </FilterableCell>
       )
@@ -330,7 +333,7 @@ export const compactColumns = [
       const t = primary(info.getValue())
       if (!t || t.id === t.technique_id) return <span className="text-faint">—</span>
       return (
-        <FilterableCell category="subtechnique" value={t.id}>
+        <FilterableCell category="subtechnique" value={t.id} table={info.table}>
           <span className="font-mono text-xs text-dim">{t.id}</span>
         </FilterableCell>
       )

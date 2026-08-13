@@ -6,7 +6,7 @@
 const USE_MOCK = false
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,9 +14,9 @@ import {
   flexRender,
   type SortingState,
 } from "@tanstack/react-table"
-import { useQueryState, parseAsString, parseAsStringEnum } from "nuqs"
 import { ChevronUp, ChevronDown, Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { useFilterParams } from "@/hooks/useFilterParams"
 import { useLogsInfiniteQuery } from "@/hooks/useLogsQuery"
 import { getMockLogs, MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
@@ -26,21 +26,19 @@ import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
 import { api, ApiError } from "@/lib/api"
 import { UNKNOWN_FILTER_CATEGORY, type FilterCategory } from "@/lib/types"
+import { formatCount } from "@/lib/format"
 
 interface LogTableClientProps {
   // Categories come from /filters/categories; fallback to mock when USE_MOCK
   categories?: FilterCategory[]
-  platformName?: string
 }
 
-export function LogTableClient({ categories, platformName }: LogTableClientProps) {
+export function LogTableClient({ categories }: LogTableClientProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteCategory, setPaletteCategory] = useState<import("@/lib/types").FilterCategory | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
 
-  const [q] = useQueryState("q", parseAsString.withDefault(""))
-  const [view] = useQueryState("view", parseAsStringEnum(["compact", "full"]).withDefault("full"))
-  const { filters, clearAllFilters } = useFilterParams()
+  const { filters, setFilter, clearAllFilters, q, view } = useFilterParams()
 
   const categoriesQuery = useQuery({
     queryKey: ["filter-categories"],
@@ -103,22 +101,43 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
         setPaletteCategory(cat)
         setPaletteOpen(true)
       },
+      // Se resuelven aquí, una vez, y viajan a las celdas por `meta`. Antes cada
+      // celda montaba `useFilterParams` por su cuenta — más de mil instancias.
+      filters,
+      addFilter: (category: string, value: string) => {
+        const current = filters[category] ?? []
+        if (current.includes(value)) return
+        setFilter(category, [...current, value])
+      },
     },
   })
+
+  // Virtualización: solo se renderizan las filas visibles.
+  //
+  // Sin esto se montaban 200 filas x 8 columnas en cada render, y CUALQUIER
+  // cambio de estado — abrir el buscador, cambiar de vista — repintaba las 1.600
+  // celdas. En desarrollo eso bloqueaba el hilo principal más de 10 segundos: la
+  // página parecía colgada con cualquier clic.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rows = table.getRowModel().rows
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 37,
+    overscan: 12,
+  })
+  const virtualRows = virtualizer.getVirtualItems()
+  const paddingTop = virtualRows[0]?.start ?? 0
+  const paddingBottom =
+    virtualRows.length > 0
+      ? virtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+      : 0
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3 border-b border-line bg-background px-4 py-2.5">
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          {/* Platform breadcrumb */}
-          {platformName && (
-            <span className="font-mono text-xs text-dim">
-              {platformName}
-              <span className="mx-1.5 text-faint">/</span>
-            </span>
-          )}
-
           {/* Active filter chips */}
           <FilterChips categories={resolvedCategories} />
 
@@ -190,7 +209,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
 
       {/* ── Table ── */}
       {!isLoading && !isError && (
-        <div className="flex-1 overflow-auto">
+        <div ref={scrollRef} className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-thead">
               {table.getHeaderGroups().map((headerGroup) => (
@@ -209,7 +228,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
             </thead>
 
             <tbody>
-              {table.getRowModel().rows.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={columns.length}
@@ -219,22 +238,41 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="group border-b border-line-soft transition-colors even:bg-zebra hover:bg-row-hover"
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        style={{ width: cell.column.getSize() }}
-                        className="px-4 py-2.5 align-top"
+                <>
+                  {/* Filas espaciadoras: mantienen la barra de scroll coherente
+                      con el total sin renderizar lo que no se ve. */}
+                  {paddingTop > 0 && (
+                    <tr aria-hidden>
+                      <td colSpan={columns.length} style={{ height: paddingTop }} />
+                    </tr>
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                    const row = rows[virtualRow.index]
+                    return (
+                      <tr
+                        key={row.id}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        className="group border-b border-line-soft transition-colors even:bg-zebra hover:bg-row-hover"
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            style={{ width: cell.column.getSize() }}
+                            className="px-4 py-2.5 align-top"
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                  {paddingBottom > 0 && (
+                    <tr aria-hidden>
+                      <td colSpan={columns.length} style={{ height: paddingBottom }} />
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>
@@ -244,7 +282,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── Footer ── */}
       <div className="flex items-center justify-between border-t border-line bg-background px-4 py-2">
         <span className="font-mono text-xs text-dim">
-          {logs.length.toLocaleString()} of {total.toLocaleString()} log
+          {formatCount(logs.length)} of {formatCount(total)} log
           {total !== 1 ? "s" : ""}
           {USE_MOCK ? " (mock)" : ""}
         </span>

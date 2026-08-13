@@ -1,6 +1,6 @@
 "use client"
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { api, type LogsQuery } from "@/lib/api"
 
 export function useLogsQuery(query: LogsQuery) {
@@ -24,6 +24,10 @@ export function useLogsInfiniteQuery(query: LogsQuery) {
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
     staleTime: 30_000,
+    // Mantiene la página anterior mientras carga la nueva. Además de evitar el
+    // parpadeo a tabla vacía al filtrar, elimina el ciclo undefined -> datos que
+    // reiniciaba la transición del router en cada cambio de filtro.
+    placeholderData: keepPreviousData,
   })
 }
 

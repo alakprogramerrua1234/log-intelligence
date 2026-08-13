@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ArrowRight, Database, FlaskConical, GitBranch, Plus, Server, Shield, Users } from "lucide-react"
 import { getMockLogs } from "@/lib/mock-data"
 import { PLATFORM_GROUPS } from "@/lib/platforms"
+import { formatCount } from "@/lib/format"
 
 // TODO: replace with `await fetch("/api/v1/platforms")` once API is live
 const MOCK_STATS = [
@@ -157,7 +158,7 @@ export default function HomePage() {
                           {platform.name}
                         </span>
                         <span className="font-mono text-xs font-bold tabular-nums text-accent">
-                          {platform.log_count.toLocaleString()}
+                          {formatCount(platform.log_count)}
                         </span>
                       </span>
                       <span className="mt-px flex gap-3 font-mono text-[10px] text-faint">

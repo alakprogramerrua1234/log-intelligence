@@ -23,7 +23,17 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { retry, refetchOnWindowFocus: false },
+          queries: {
+            retry,
+            refetchOnWindowFocus: false,
+            // `networkMode: "online"` (el defecto) deja las queries en
+            // `fetchStatus: "paused"` cuando React Query cree que no hay red.
+            // Aquí lo hacía con `navigator.onLine === true`, y una query que
+            // nunca se asienta mantiene viva una transición de React: el router
+            // dejaba de confirmar navegaciones. Hablamos con una API conocida;
+            // si falla, queremos el error, no una pausa silenciosa.
+            networkMode: "always",
+          },
         },
       }),
   )

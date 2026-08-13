@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { NuqsAdapter } from "nuqs/adapters/next/app"
 import { QueryProvider } from "@/components/QueryProvider"
 import { SiteHeader } from "@/components/layout/SiteHeader"
 import "./globals.css"
@@ -38,12 +37,10 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem("theme");var d=t?t==="dark":window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.classList.add("dark")}catch(e){}})();`,
           }}
         />
-        <NuqsAdapter>
-          <QueryProvider>
-            <SiteHeader />
-            {children}
-          </QueryProvider>
-        </NuqsAdapter>
+        <QueryProvider>
+          <SiteHeader />
+          {children}
+        </QueryProvider>
       </body>
     </html>
   )

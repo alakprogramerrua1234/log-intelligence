@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Command } from "cmdk"
 import { Search, Filter, Loader2, X, ChevronDown } from "lucide-react"
-import { useQueryState, parseAsString } from "nuqs"
 import { useQuery } from "@tanstack/react-query"
 import { useFilterParams } from "@/hooks/useFilterParams"
 import { api } from "@/lib/api"
@@ -50,8 +49,7 @@ export function CommandPalette({ open, onOpenChange, categories, openWithCategor
   const [inputValue, setInputValue] = useState("")
   const [pinnedCategory, setPinnedCategory] = useState<FilterCategory | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
-  const [, setQ] = useQueryState("q", parseAsString.withDefault(""))
-  const { setFilter, filters } = useFilterParams()
+  const { setFilter, filters, setQ } = useFilterParams()
 
   useEffect(() => {
     if (open) {
