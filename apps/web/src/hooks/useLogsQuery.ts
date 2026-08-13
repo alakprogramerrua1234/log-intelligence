@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 import { api, type LogsQuery } from "@/lib/api"
 
 export function useLogsQuery(query: LogsQuery) {
@@ -8,6 +8,26 @@ export function useLogsQuery(query: LogsQuery) {
     queryKey: ["logs", query],
     queryFn: () => api.logs.list(query),
     staleTime: 30_000,
+  })
+}
+
+/**
+ * Paginación por cursor. El cursor es opaco: se reenvía tal cual llegó en
+ * `next_cursor` y nunca se construye en cliente — el backend puede cambiar de
+ * keyset (Postgres) a página (Meilisearch) sin tocar esto.
+ */
+export function useLogsInfiniteQuery(query: LogsQuery) {
+  return useInfiniteQuery({
+    queryKey: ["logs", "infinite", query],
+    queryFn: ({ pageParam }) =>
+      api.logs.list({ ...query, cursor: pageParam ?? undefined }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
+    staleTime: 30_000,
+    // Mantiene la página anterior mientras carga la nueva. Además de evitar el
+    // parpadeo a tabla vacía al filtrar, elimina el ciclo undefined -> datos que
+    // reiniciaba la transición del router en cada cambio de filtro.
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -1,13 +1,11 @@
 "use client"
 
-import { useQueryState, parseAsStringEnum } from "nuqs"
 import { LayoutList, Table2 } from "lucide-react"
 
+import { useFilterParams } from "@/hooks/useFilterParams"
+
 export function ViewToggle() {
-  const [view, setView] = useQueryState(
-    "view",
-    parseAsStringEnum(["compact", "full"]).withDefault("full"),
-  )
+  const { view, setView } = useFilterParams()
 
   return (
     <div className="flex items-center gap-0.5 rounded-md border border-line bg-surface-1 p-0.5">

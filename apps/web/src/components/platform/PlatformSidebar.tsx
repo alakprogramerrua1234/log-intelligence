@@ -1,19 +1,37 @@
 "use client"
 
-import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
+
 import { useFilterParams } from "@/hooks/useFilterParams"
-import { ALL_PLATFORMS } from "@/lib/platforms"
-import { MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
+import { useFilterCategories } from "@/hooks/useLogsQuery"
+import { api } from "@/lib/api"
 
-interface PlatformSidebarProps {
-  activeSlug?: string
-}
+// Las plataformas salen de la API (`/filters/values?category=platform`), no de
+// un catálogo mock. El mock listaba slugs — `m365`, `aws`, `okta`… — que no
+// existen como plataformas en el dataset, así que la mayoría de estos enlaces
+// llevaban a una tabla vacía sin decir nada. El valor del filtro tiene que ser
+// exactamente el que la API reconoce.
+//
+// Los conteos por plataforma se han quitado: eran inventados (1.240 para
+// Windows, cuando el dataset real tiene 2.577). Volverán cuando exista un
+// endpoint que los sirva de verdad.
+//
+// Son botones, no <Link>: elegir plataforma es aplicar un filtro. Navegar con
+// el router para re-renderizar una página que ya no lee `searchParams` no
+// aportaba nada, y era justo lo que dejaba el router bloqueado.
 
-export function PlatformSidebar({ activeSlug }: PlatformSidebarProps) {
-  const { filters } = useFilterParams()
+export function PlatformSidebar() {
+  const { filters, setFilter } = useFilterParams()
+  const activePlatform = filters.platform?.[0]
 
-  // Facet counts per category (platform is shown in its own list above)
-  const facetCategories = MOCK_FILTER_CATEGORIES.filter((c) => c.key !== "platform")
+  const platforms = useQuery({
+    queryKey: ["filter-values", "platform"],
+    queryFn: () => api.filters.values("platform"),
+    staleTime: 5 * 60_000,
+  })
+
+  const categories = useFilterCategories()
+  const facetCategories = (categories.data ?? []).filter((c) => c.key !== "platform")
 
   return (
     <aside className="hidden w-52 shrink-0 flex-col gap-6 border-r border-line px-3 py-5 md:flex">
@@ -22,30 +40,25 @@ export function PlatformSidebar({ activeSlug }: PlatformSidebarProps) {
           Platform
         </h4>
         <ul className="flex flex-col gap-px">
-          {ALL_PLATFORMS.map((platform) => {
-            const isActive = platform.slug === activeSlug
+          {(platforms.data ?? []).map((platform) => {
+            const isActive = platform === activePlatform
             return (
-              <li key={platform.slug}>
-                <Link
-                  href={`/explore?f.platform=${platform.slug}`}
-                  className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+              <li key={platform}>
+                <button
+                  type="button"
+                  onClick={() => setFilter("platform", isActive ? [] : [platform])}
+                  aria-pressed={isActive}
+                  className={`flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
                     isActive
                       ? "bg-accent-weak font-semibold text-foreground"
                       : "text-fg-2 hover:bg-surface-2 hover:text-foreground"
                   }`}
                 >
-                  <span className="flex items-center gap-1.5">
-                    <span className={`text-[10px] ${isActive ? "text-accent" : "text-transparent"}`}>
-                      ▸
-                    </span>
-                    {platform.name}
+                  <span className={`text-[10px] ${isActive ? "text-accent" : "text-transparent"}`}>
+                    ▸
                   </span>
-                  <span
-                    className={`font-mono text-[11px] tabular-nums ${isActive ? "text-accent" : "text-faint"}`}
-                  >
-                    {platform.log_count.toLocaleString()}
-                  </span>
-                </Link>
+                  <span className="truncate">{platform}</span>
+                </button>
               </li>
             )
           })}

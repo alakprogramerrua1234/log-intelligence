@@ -10,15 +10,19 @@ import argparse
 import csv
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import Table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.database import SessionLocal
+from src.ingest.schemas import DetectionRow
 from src.models import (
     Detection,
     EventId,
@@ -29,7 +33,7 @@ from src.models import (
     Tactic,
     Technique,
 )
-from src.ingest.schemas import DetectionRow
+from src.search.reindex import reindex_from_settings
 
 # ── filter_category seed ──────────────────────────────────────────────────────
 FILTER_CATEGORIES: list[dict[str, Any]] = [
@@ -120,7 +124,7 @@ def _upsert_dim(session: Session, table: Any, name: str, cache: dict[str, int]) 
 
 def _upsert_technique(session: Session, technique_id: str, name: str) -> None:
     stmt = (
-        pg_insert(Technique.__table__)
+        pg_insert(cast(Table, Technique.__table__))
         .values(id=technique_id, name=name)
         .on_conflict_do_update(index_elements=["id"], set_={"name": name})
     )
@@ -131,7 +135,7 @@ def _upsert_subtechnique(
     session: Session, sub_id: str, name: str, technique_id: str
 ) -> None:
     stmt = (
-        pg_insert(Subtechnique.__table__)
+        pg_insert(cast(Table, Subtechnique.__table__))
         .values(id=sub_id, name=name, technique_id=technique_id)
         .on_conflict_do_update(
             index_elements=["id"], set_={"name": name, "technique_id": technique_id}
@@ -141,13 +145,40 @@ def _upsert_subtechnique(
 
 
 def _seed_filter_categories(session: Session) -> None:
-    stmt = pg_insert(FilterCategory.__table__).on_conflict_do_nothing(index_elements=["key"])
+    stmt = pg_insert(cast(Table, FilterCategory.__table__)).on_conflict_do_nothing(
+        index_elements=["key"]
+    )
     session.execute(stmt, FILTER_CATEGORIES)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def load(source: Path, dry_run: bool) -> None:
+
+@dataclass(frozen=True)
+class LoadReport:
+    """Resultado de una carga. Lo devuelve `load` para poder afirmarlo en tests."""
+
+    rows_read: int
+    rows_invalid: int
+    rows_inserted: int
+    rows_duplicate: int
+    platforms: int
+    log_sources: int
+    event_ids: int
+    tactics: int
+    seconds: float
+
+
+def load(
+    source: Path,
+    dry_run: bool,
+    session_factory: Callable[[], Session] = SessionLocal,
+) -> LoadReport:
+    """Carga un CSV. Idempotente: reejecutarla deja la DB igual.
+
+    `session_factory` se inyecta para que los tests usen una DB efímera sin
+    tocar la configuración global.
+    """
     t0 = time.perf_counter()
 
     platform_cache: dict[str, int] = {}
@@ -160,7 +191,7 @@ def load(source: Path, dry_run: bool) -> None:
     rows_inserted = 0
     rows_duplicate = 0
 
-    session: Session = SessionLocal()
+    session: Session = session_factory()
     try:
         _seed_filter_categories(session)
 
@@ -194,7 +225,7 @@ def load(source: Path, dry_run: bool) -> None:
                     )
 
                 det_stmt = (
-                    pg_insert(Detection.__table__)
+                    pg_insert(cast(Table, Detection.__table__))
                     .values(
                         platform_id=platform_id,
                         log_source_id=log_source_id,
@@ -204,9 +235,13 @@ def load(source: Path, dry_run: bool) -> None:
                         subtechnique_id=row.subtechnique_id or None,
                     )
                     .on_conflict_do_nothing(constraint="uq_detection_combination")
+                    # RETURNING y no `rowcount`: con psycopg3 este INSERT
+                    # devuelve rowcount -1, así que compararlo con 1 contaba
+                    # TODAS las filas como duplicadas. `ON CONFLICT DO NOTHING`
+                    # solo devuelve fila cuando ha insertado de verdad.
+                    .returning(cast(Table, Detection.__table__).c.id)
                 )
-                result = session.execute(det_stmt)
-                if result.rowcount == 1:
+                if session.execute(det_stmt).scalar_one_or_none() is not None:
                     rows_inserted += 1
                 else:
                     rows_duplicate += 1
@@ -223,18 +258,31 @@ def load(source: Path, dry_run: bool) -> None:
     finally:
         session.close()
 
-    elapsed = time.perf_counter() - t0
+    return LoadReport(
+        rows_read=rows_read,
+        rows_invalid=rows_invalid,
+        rows_inserted=rows_inserted,
+        rows_duplicate=rows_duplicate,
+        platforms=len(platform_cache),
+        log_sources=len(log_source_cache),
+        event_ids=len(event_id_cache),
+        tactics=len(tactic_cache),
+        seconds=time.perf_counter() - t0,
+    )
+
+
+def _print_report(report: LoadReport, dry_run: bool) -> None:
     action = "would insert" if dry_run else "inserted"
     print(
-        f"\nDone in {elapsed:.2f}s\n"
-        f"  rows read:      {rows_read}\n"
-        f"  invalid:        {rows_invalid}\n"
-        f"  {action}:  {rows_inserted}\n"
-        f"  duplicates:     {rows_duplicate}\n"
-        f"  platforms:      {len(platform_cache)}\n"
-        f"  log_sources:    {len(log_source_cache)}\n"
-        f"  event_ids:      {len(event_id_cache)}\n"
-        f"  tactics:        {len(tactic_cache)}\n"
+        f"\nDone in {report.seconds:.2f}s\n"
+        f"  rows read:      {report.rows_read}\n"
+        f"  invalid:        {report.rows_invalid}\n"
+        f"  {action}:  {report.rows_inserted}\n"
+        f"  duplicates:     {report.rows_duplicate}\n"
+        f"  platforms:      {report.platforms}\n"
+        f"  log_sources:    {report.log_sources}\n"
+        f"  event_ids:      {report.event_ids}\n"
+        f"  tactics:        {report.tactics}\n"
     )
 
 
@@ -242,6 +290,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Load detections CSV into the database.")
     parser.add_argument("--source", required=True, help="Path to the CSV file")
     parser.add_argument("--dry-run", action="store_true", help="Validate without committing")
+    parser.add_argument(
+        "--no-reindex",
+        action="store_true",
+        help="Skip the Meilisearch reindex that normally follows a successful load",
+    )
     args = parser.parse_args()
 
     source = Path(args.source)
@@ -250,7 +303,26 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Loading {source} {'(dry-run)' if args.dry_run else ''}...")
-    load(source, dry_run=args.dry_run)
+    report = load(source, dry_run=args.dry_run)
+    _print_report(report, args.dry_run)
+
+    if args.dry_run or args.no_reindex:
+        return
+    if settings.search_backend != "meilisearch":
+        return
+
+    # El índice es derivado: la carga ya está confirmada. Si el reindex falla,
+    # los datos están bien pero la búsqueda queda obsoleta — hay que decirlo y
+    # salir en error, no tragárselo.
+    try:
+        reindex_from_settings()
+    except Exception as exc:  # noqa: BLE001 - se reporta y se propaga como exit code
+        print(
+            f"\nData loaded, but the Meilisearch reindex failed: {exc}\n"
+            f"Re-run: python -m src.search.reindex",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

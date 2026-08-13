@@ -1,12 +1,12 @@
 from .base import Base
-from .platform import Platform
-from .log_source import LogSource
+from .detection import Detection
 from .event_id import EventId
+from .filter_category import FilterCategory
+from .log_source import LogSource
+from .platform import Platform
+from .subtechnique import Subtechnique
 from .tactic import Tactic
 from .technique import Technique
-from .subtechnique import Subtechnique
-from .detection import Detection
-from .filter_category import FilterCategory
 
 __all__ = [
     "Base",

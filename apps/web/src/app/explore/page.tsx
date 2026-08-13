@@ -1,67 +1,36 @@
 import { Suspense } from "react"
 import { Loader2 } from "lucide-react"
+
 import { LogTableClient } from "@/components/log-table/LogTableClient"
 import { PlatformSidebar } from "@/components/platform/PlatformSidebar"
+import { ExploreHeader } from "@/components/log-table/ExploreHeader"
 
-// Platform display names — keyed by slug.
-// TODO: replace with GET /platforms/{slug} once API is live.
-const PLATFORM_NAMES: Record<string, string> = {
-  windows:  "Microsoft Windows",
-  linux:    "Linux",
-  macos:    "macOS",
-  aws:      "Amazon Web Services",
-  azure:    "Microsoft Azure",
-  gcp:      "Google Cloud Platform",
-  okta:     "Okta",
-  m365:     "Microsoft 365",
-  gsuite:   "Google Workspace",
-  firewall: "Firewall",
-  dns:      "DNS",
-}
+// Esta página NO lee `searchParams`.
+//
+// Antes sí lo hacía, solo para traducir un slug a un título con un diccionario
+// hardcodeado. El precio era que cada cambio de filtro re-renderizaba el Server
+// Component y disparaba un round-trip RSC: la petición salía, devolvía 200… y la
+// transición no llegaba a confirmarse, dejando el router bloqueado para toda
+// navegación posterior.
+//
+// Quien lee la URL son los componentes cliente, que ya lo hacían igualmente. Así
+// aplicar un filtro es un cambio de URL en cliente y nada más.
 
-interface ExplorePageProps {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}
-
-export default async function ExplorePage({ searchParams }: ExplorePageProps) {
-  const params = await searchParams
-  const platformSlug = Array.isArray(params["f.platform"])
-    ? params["f.platform"][0]
-    : (params["f.platform"] ?? "")
-
-  const platformName = platformSlug ? (PLATFORM_NAMES[platformSlug] ?? platformSlug) : undefined
-
-  // TODO: when API is live, fetch categories server-side:
-  //   const categories = await api.filters.categories()
-  // and pass them to LogTableClient as a prop.
-
+export default function ExplorePage() {
   return (
     <main className="flex flex-1 flex-col min-h-0 bg-background">
       <div className="mx-auto flex w-full max-w-7xl flex-1 min-h-0">
-        {/* Sidebar — platform switcher + active facets (uses useSearchParams) */}
-        <Suspense fallback={<div className="hidden w-52 shrink-0 border-r border-line md:block" />}>
-          <PlatformSidebar activeSlug={platformSlug || undefined} />
+        <Suspense
+          fallback={<div className="hidden w-52 shrink-0 border-r border-line md:block" />}
+        >
+          <PlatformSidebar />
         </Suspense>
 
         <div className="flex min-w-0 flex-1 flex-col min-h-0">
-          {/* Page header */}
-          <div className="border-b border-line px-4 py-4">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-base font-semibold text-foreground">
-                {platformName ?? "All platforms"}
-              </h1>
-              {platformName && (
-                <span className="font-mono text-xs text-faint">logs</span>
-              )}
-            </div>
-            <p className="mt-0.5 text-xs text-dim">
-              {platformName
-                ? `Browsing logs for ${platformName}. Use filters or ⌘K to narrow down.`
-                : "Browse all logs across platforms. Select a platform or filter with ⌘K."}
-            </p>
-          </div>
+          <Suspense fallback={<div className="h-[73px] border-b border-line" />}>
+            <ExploreHeader />
+          </Suspense>
 
-          {/* Table — wrapped in Suspense because LogTableClient uses useSearchParams */}
           <Suspense
             fallback={
               <div className="flex flex-1 items-center justify-center">
@@ -69,7 +38,7 @@ export default async function ExplorePage({ searchParams }: ExplorePageProps) {
               </div>
             }
           >
-            <LogTableClient platformName={platformName} />
+            <LogTableClient />
           </Suspense>
         </div>
       </div>

@@ -6,15 +6,16 @@ Create Date: 2026-05-23
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -96,7 +97,14 @@ def upgrade() -> None:
     """)
 
     # FK indexes on detection
-    for col in ("platform_id", "log_source_id", "channel_id", "tactic_id", "technique_id", "subtechnique_id"):
+    for col in (
+        "platform_id",
+        "log_source_id",
+        "channel_id",
+        "tactic_id",
+        "technique_id",
+        "subtechnique_id",
+    ):
         op.create_index(f"ix_detection_{col}", "detection", [col])
 
     # ── Filter category catalogue ─────────────────────────────────────────────

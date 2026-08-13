@@ -1,6 +1,42 @@
-import type { FilterCategory, Log, PaginatedLogs, Platform, SuggestItem } from "@/lib/types"
+import type {
+  ApiErrorBody,
+  FilterCategory,
+  Log,
+  PaginatedLogs,
+  Platform,
+  SuggestItem,
+} from "@/lib/types"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1"
+
+/** Error de la API con el `code` estable ya extraído, para que la UI ramifique sobre él. */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+  readonly keys: string[]
+
+  constructor(status: number, path: string, body: ApiErrorBody | null) {
+    super(body?.detail || `API error ${status}: ${path}`)
+    this.name = "ApiError"
+    this.status = status
+    this.code = body?.code ?? null
+    this.keys = body?.keys ?? []
+  }
+}
+
+/** El cuerpo de error puede no seguir el contrato (502 de un proxy, 422 de FastAPI…). */
+function parseErrorBody(value: unknown): ApiErrorBody | null {
+  if (typeof value !== "object" || value === null) return null
+  const body = value as Record<string, unknown>
+  if (typeof body.code !== "string") return null
+  return {
+    detail: typeof body.detail === "string" ? body.detail : "",
+    code: body.code,
+    keys: Array.isArray(body.keys)
+      ? body.keys.filter((key): key is string => typeof key === "string")
+      : [],
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -8,7 +44,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${path}`)
+    const body: unknown = await res.json().catch(() => null)
+    throw new ApiError(res.status, path, parseErrorBody(body))
   }
   return res.json() as Promise<T>
 }

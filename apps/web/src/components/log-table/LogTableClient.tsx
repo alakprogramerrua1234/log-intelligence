@@ -6,7 +6,7 @@
 const USE_MOCK = false
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,33 +14,31 @@ import {
   flexRender,
   type SortingState,
 } from "@tanstack/react-table"
-import { useQueryState, parseAsString, parseAsStringEnum } from "nuqs"
 import { ChevronUp, ChevronDown, Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { useFilterParams } from "@/hooks/useFilterParams"
-import { useLogsQuery } from "@/hooks/useLogsQuery"
+import { useLogsInfiniteQuery } from "@/hooks/useLogsQuery"
 import { getMockLogs, MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
 import { FilterChips } from "@/components/filters/FilterChips"
 import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
-import { api } from "@/lib/api"
-import type { FilterCategory } from "@/lib/types"
+import { api, ApiError } from "@/lib/api"
+import { UNKNOWN_FILTER_CATEGORY, type FilterCategory } from "@/lib/types"
+import { formatCount } from "@/lib/format"
 
 interface LogTableClientProps {
   // Categories come from /filters/categories; fallback to mock when USE_MOCK
   categories?: FilterCategory[]
-  platformName?: string
 }
 
-export function LogTableClient({ categories, platformName }: LogTableClientProps) {
+export function LogTableClient({ categories }: LogTableClientProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteCategory, setPaletteCategory] = useState<import("@/lib/types").FilterCategory | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
 
-  const [q] = useQueryState("q", parseAsString.withDefault(""))
-  const [view] = useQueryState("view", parseAsStringEnum(["compact", "full"]).withDefault("full"))
-  const { filters } = useFilterParams()
+  const { filters, setFilter, clearAllFilters, q, view } = useFilterParams()
 
   const categoriesQuery = useQuery({
     queryKey: ["filter-categories"],
@@ -59,20 +57,32 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
   const mockResult = USE_MOCK ? getMockLogs(filters, q) : null
 
   // REAL path: swap USE_MOCK to false and this hook takes over.
-  // TODO: pass cursor for next-page when implementing infinite scroll.
+  // La ordenación es server-driven: viaja a la API y vuelve paginada. Cambiarla
+  // invalida el cursor en el backend, así que la query arranca de cero sola.
   const sortBy  = sorting[0]?.id
   const sortDir = sorting[0]?.desc ? "desc" : "asc"
 
-  const realQuery = useLogsQuery(
+  const realQuery = useLogsInfiniteQuery(
     USE_MOCK
       ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
       : { q, filters, view, sort_by: sortBy, sort_dir: sortDir },
   )
 
-  const logs = USE_MOCK ? (mockResult?.items ?? []) : (realQuery.data?.items ?? [])
-  const total = USE_MOCK ? (mockResult?.total ?? 0) : (realQuery.data?.total ?? 0)
-  const isLoading = !USE_MOCK && realQuery.isLoading
+  const pages = realQuery.data?.pages ?? []
+  const logs = USE_MOCK ? (mockResult?.items ?? []) : pages.flatMap((page) => page.items)
+  const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages[0]?.total ?? 0)
+  // `isPending`, no `isLoading`: cubre también el caso en que React Query deja
+  // el fetch en pausa. Sin esto la tabla pinta "No logs match the current
+  // filters" mientras la query aún no ha resuelto, que es sencillamente falso.
+  const isLoading = !USE_MOCK && realQuery.isPending
   const isError = !USE_MOCK && realQuery.isError
+
+  // La API rechaza categorías de filtro que no existen en vez de ignorarlas.
+  // Suele venir de una URL compartida que quedó obsoleta.
+  const unknownFilterKeys =
+    realQuery.error instanceof ApiError && realQuery.error.code === UNKNOWN_FILTER_CATEGORY
+      ? realQuery.error.keys
+      : []
 
   // ── Table ─────────────────────────────────────────────────────────────────
   const columns = view === "compact" ? compactColumns : fullColumns
@@ -91,22 +101,43 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
         setPaletteCategory(cat)
         setPaletteOpen(true)
       },
+      // Se resuelven aquí, una vez, y viajan a las celdas por `meta`. Antes cada
+      // celda montaba `useFilterParams` por su cuenta — más de mil instancias.
+      filters,
+      addFilter: (category: string, value: string) => {
+        const current = filters[category] ?? []
+        if (current.includes(value)) return
+        setFilter(category, [...current, value])
+      },
     },
   })
+
+  // Virtualización: solo se renderizan las filas visibles.
+  //
+  // Sin esto se montaban 200 filas x 8 columnas en cada render, y CUALQUIER
+  // cambio de estado — abrir el buscador, cambiar de vista — repintaba las 1.600
+  // celdas. En desarrollo eso bloqueaba el hilo principal más de 10 segundos: la
+  // página parecía colgada con cualquier clic.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rows = table.getRowModel().rows
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 37,
+    overscan: 12,
+  })
+  const virtualRows = virtualizer.getVirtualItems()
+  const paddingTop = virtualRows[0]?.start ?? 0
+  const paddingBottom =
+    virtualRows.length > 0
+      ? virtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+      : 0
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3 border-b border-line bg-background px-4 py-2.5">
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          {/* Platform breadcrumb */}
-          {platformName && (
-            <span className="font-mono text-xs text-dim">
-              {platformName}
-              <span className="mx-1.5 text-faint">/</span>
-            </span>
-          )}
-
           {/* Active filter chips */}
           <FilterChips categories={resolvedCategories} />
 
@@ -149,15 +180,36 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
         </div>
       )}
 
-      {isError && (
-        <div className="flex flex-1 items-center justify-center text-sm text-red-400">
+      {isError && unknownFilterKeys.length > 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+          <p className="text-sm text-accent">
+            Unknown filter {unknownFilterKeys.length === 1 ? "category" : "categories"}:{" "}
+            <span className="font-mono">{unknownFilterKeys.join(", ")}</span>
+          </p>
+          <p className="max-w-md text-xs text-dim">
+            {unknownFilterKeys.length === 1 ? "That isn't a" : "Those aren't"} filterable
+            {unknownFilterKeys.length === 1 ? " category" : " categories"}. This usually
+            comes from a shared URL that is out of date.
+          </p>
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="rounded-md border border-line bg-surface-1 px-3 py-1.5 text-xs text-fg-2 transition-colors hover:border-faint hover:text-foreground"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+
+      {isError && unknownFilterKeys.length === 0 && (
+        <div className="flex flex-1 items-center justify-center text-sm text-red-500">
           Failed to load logs. Is the API running?
         </div>
       )}
 
       {/* ── Table ── */}
       {!isLoading && !isError && (
-        <div className="flex-1 overflow-auto">
+        <div ref={scrollRef} className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-thead">
               {table.getHeaderGroups().map((headerGroup) => (
@@ -176,7 +228,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
             </thead>
 
             <tbody>
-              {table.getRowModel().rows.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={columns.length}
@@ -186,22 +238,41 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="group border-b border-line-soft transition-colors even:bg-zebra hover:bg-row-hover"
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        style={{ width: cell.column.getSize() }}
-                        className="px-4 py-2.5 align-top"
+                <>
+                  {/* Filas espaciadoras: mantienen la barra de scroll coherente
+                      con el total sin renderizar lo que no se ve. */}
+                  {paddingTop > 0 && (
+                    <tr aria-hidden>
+                      <td colSpan={columns.length} style={{ height: paddingTop }} />
+                    </tr>
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                    const row = rows[virtualRow.index]
+                    return (
+                      <tr
+                        key={row.id}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        className="group border-b border-line-soft transition-colors even:bg-zebra hover:bg-row-hover"
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            style={{ width: cell.column.getSize() }}
+                            className="px-4 py-2.5 align-top"
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                  {paddingBottom > 0 && (
+                    <tr aria-hidden>
+                      <td colSpan={columns.length} style={{ height: paddingBottom }} />
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>
@@ -211,12 +282,27 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── Footer ── */}
       <div className="flex items-center justify-between border-t border-line bg-background px-4 py-2">
         <span className="font-mono text-xs text-dim">
-          {total.toLocaleString()} log{total !== 1 ? "s" : ""}
+          {formatCount(logs.length)} of {formatCount(total)} log
+          {total !== 1 ? "s" : ""}
           {USE_MOCK ? " (mock)" : ""}
         </span>
-        <div className="flex items-center gap-1 text-xs text-faint">
-          {/* TODO: cursor-based pagination controls */}
-          <span>pagination coming soon</span>
+        <div className="flex items-center gap-2 text-xs">
+          {!USE_MOCK && realQuery.hasNextPage && (
+            <button
+              type="button"
+              onClick={() => void realQuery.fetchNextPage()}
+              disabled={realQuery.isFetchingNextPage}
+              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-1 px-2.5 py-1 text-fg-2 transition-colors hover:border-faint hover:text-foreground disabled:opacity-50"
+            >
+              {realQuery.isFetchingNextPage && (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
+              Load more
+            </button>
+          )}
+          {!USE_MOCK && !realQuery.hasNextPage && logs.length > 0 && (
+            <span className="text-faint">end of results</span>
+          )}
         </div>
       </div>
 
