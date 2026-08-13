@@ -14,7 +14,7 @@ import {
   flexRender,
   type SortingState,
 } from "@tanstack/react-table"
-import { ChevronUp, ChevronDown, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useFilterParams } from "@/hooks/useFilterParams"

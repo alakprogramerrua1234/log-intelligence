@@ -73,14 +73,6 @@ function FilterableHeader({ label, onFilterClick }: { label: string; onFilterCli
   )
 }
 
-function StaticHeader({ label }: { label: string }) {
-  return (
-    <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">
-      {label}
-    </span>
-  )
-}
-
 function primary(techniques: TechniqueRef[]): TechniqueRef | null {
   return techniques[0] ?? null
 }
