@@ -51,7 +51,12 @@ export function CommandPalette({ open, onOpenChange, categories, openWithCategor
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const { setFilter, filters, setQ } = useFilterParams()
 
-  useEffect(() => {
+  // Ajuste de estado en render (patrón "adjusting state when props change"),
+  // no en un efecto: React repite el render antes de tocar hijos o DOM.
+  // openWithCategory solo importa en el instante en que open pasa a true.
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       if (openWithCategory) setPinnedCategory(openWithCategory)
     } else {
@@ -59,15 +64,17 @@ export function CommandPalette({ open, onOpenChange, categories, openWithCategor
       setPinnedCategory(null)
       setCategoryPickerOpen(false)
     }
-  // openWithCategory is only meaningful at the moment open transitions to true
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
         onOpenChange(!open)
+      } else if (e.key === "Escape" && open) {
+        // El pie promete "esc close"; cmdk no cierra por sí solo.
+        e.preventDefault()
+        onOpenChange(false)
       }
     }
     document.addEventListener("keydown", handler)
