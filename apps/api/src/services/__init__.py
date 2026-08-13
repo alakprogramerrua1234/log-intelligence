@@ -5,7 +5,9 @@ from .filters import (
     FilterCatalogError,
     FilterService,
     UnknownFilterCategoryError,
+    UnknownSortKeyError,
     parse_filters,
+    parse_sort,
     validate_catalog,
     validate_filters,
 )
@@ -15,7 +17,9 @@ __all__ = [
     "FilterCatalogError",
     "FilterService",
     "UnknownFilterCategoryError",
+    "UnknownSortKeyError",
     "parse_filters",
+    "parse_sort",
     "validate_catalog",
     "validate_filters",
 ]

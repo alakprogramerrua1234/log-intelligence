@@ -17,7 +17,9 @@ router = APIRouter(prefix="/logs", tags=["logs"])
     operation_id="listLogs",
     # Declarado para que `ErrorOut` entre en el esquema OpenAPI y el frontend
     # reciba el tipo del error generado, no escrito a mano.
-    responses={400: {"model": ErrorOut, "description": "Unknown filter category or bad cursor"}},
+    responses={
+        400: {"model": ErrorOut, "description": "Unknown filter category, sort key or cursor"}
+    },
 )
 def list_logs(
     request: Request,
@@ -27,12 +29,18 @@ def list_logs(
     cursor: Annotated[
         str | None, Query(description="Opaque cursor from a previous next_cursor")
     ] = None,
+    sort: Annotated[str, Query(description="Sortable column key")] = "",
+    sort_dir: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
 ) -> PaginatedDetections:
-    """`GET /logs?filter[<key>]=<value>&q=...&limit=...&cursor=...`
+    """`GET /logs?filter[<key>]=<value>&q=...&sort=...&limit=...&cursor=...`
 
     Las claves de filtro no se enumeran aquí: se descubren del catálogo en
-    runtime. Una clave desconocida devuelve 400 (`unknown_filter_category`);
-    un cursor manipulado o de otro backend, 400 (`invalid_cursor`).
+    runtime. Devuelven 400 una clave de filtro desconocida
+    (`unknown_filter_category`), una clave de orden no soportada
+    (`unknown_sort_key`) y un cursor manipulado o de otro listado
+    (`invalid_cursor`).
     """
     filters = parse_filters(request.query_params.multi_items())
-    return service.list_logs(filters, q=q, limit=limit, cursor=cursor)
+    return service.list_logs(
+        filters, q=q, limit=limit, cursor=cursor, sort=sort, sort_dir=sort_dir
+    )

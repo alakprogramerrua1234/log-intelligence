@@ -35,6 +35,7 @@ interface LogTableClientProps {
 
 export function LogTableClient({ categories, platformName }: LogTableClientProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteCategory, setPaletteCategory] = useState<import("@/lib/types").FilterCategory | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
 
   const [q] = useQueryState("q", parseAsString.withDefault(""))
@@ -58,10 +59,15 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
   const mockResult = USE_MOCK ? getMockLogs(filters, q) : null
 
   // REAL path: swap USE_MOCK to false and this hook takes over.
+  // La ordenación es server-driven: viaja a la API y vuelve paginada. Cambiarla
+  // invalida el cursor en el backend, así que la query arranca de cero sola.
+  const sortBy  = sorting[0]?.id
+  const sortDir = sorting[0]?.desc ? "desc" : "asc"
+
   const realQuery = useLogsInfiniteQuery(
     USE_MOCK
       ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
-      : { q, filters, view },
+      : { q, filters, view, sort_by: sortBy, sort_dir: sortDir },
   )
 
   const pages = realQuery.data?.pages ?? []
@@ -90,19 +96,26 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    manualSorting: !USE_MOCK,  // when real API is used, sorting is server-driven
+    manualSorting: !USE_MOCK,
+    meta: {
+      openPaletteWithCategory: (categoryKey: string) => {
+        const cat = resolvedCategories.find((c) => c.key === categoryKey) ?? null
+        setPaletteCategory(cat)
+        setPaletteOpen(true)
+      },
+    },
   })
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-background px-4 py-2.5">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           {/* Platform breadcrumb */}
           {platformName && (
-            <span className="font-mono text-xs text-zinc-500">
+            <span className="font-mono text-xs text-dim">
               {platformName}
-              <span className="mx-1.5 text-zinc-700">/</span>
+              <span className="mx-1.5 text-faint">/</span>
             </span>
           )}
 
@@ -111,8 +124,8 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
 
           {/* Search pill */}
           {q && (
-            <span className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 font-mono text-xs text-zinc-300">
-              <span className="text-zinc-500">q:</span> {q}
+            <span className="inline-flex items-center gap-1 rounded border border-line bg-surface-1 px-2 py-0.5 font-mono text-xs text-fg-2">
+              <span className="text-dim">q:</span> {q}
             </span>
           )}
         </div>
@@ -122,10 +135,10 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
-            className="flex h-7 items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+            className="flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface-1 px-2.5 text-xs text-dim transition-colors hover:border-faint hover:text-fg-2"
           >
             Search / Filter
-            <kbd className="font-mono text-[10px] text-zinc-700">⌘K</kbd>
+            <kbd className="font-mono text-[10px] text-faint">⌘K</kbd>
           </button>
           <ViewToggle />
         </div>
@@ -144,17 +157,17 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── States ── */}
       {isLoading && (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-zinc-600" />
+          <Loader2 className="h-5 w-5 animate-spin text-dim" />
         </div>
       )}
 
       {isError && unknownFilterKeys.length > 0 && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-          <p className="text-sm text-amber-400">
+          <p className="text-sm text-accent">
             Unknown filter {unknownFilterKeys.length === 1 ? "category" : "categories"}:{" "}
             <span className="font-mono">{unknownFilterKeys.join(", ")}</span>
           </p>
-          <p className="max-w-md text-xs text-zinc-500">
+          <p className="max-w-md text-xs text-dim">
             {unknownFilterKeys.length === 1 ? "That isn't a" : "Those aren't"} filterable
             {unknownFilterKeys.length === 1 ? " category" : " categories"}. This usually
             comes from a shared URL that is out of date.
@@ -162,7 +175,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
           <button
             type="button"
             onClick={clearAllFilters}
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+            className="rounded-md border border-line bg-surface-1 px-3 py-1.5 text-xs text-fg-2 transition-colors hover:border-faint hover:text-foreground"
           >
             Clear filters
           </button>
@@ -170,7 +183,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       )}
 
       {isError && unknownFilterKeys.length === 0 && (
-        <div className="flex flex-1 items-center justify-center text-sm text-red-400">
+        <div className="flex flex-1 items-center justify-center text-sm text-red-500">
           Failed to load logs. Is the API running?
         </div>
       )}
@@ -179,9 +192,9 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {!isLoading && !isError && (
         <div className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-zinc-950">
+            <thead className="sticky top-0 z-10 bg-thead">
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b border-zinc-800">
+                <tr key={headerGroup.id} className="border-b border-line">
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
@@ -200,7 +213,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
                 <tr>
                   <td
                     colSpan={columns.length}
-                    className="py-16 text-center text-sm text-zinc-600"
+                    className="py-16 text-center text-sm text-dim"
                   >
                     No logs match the current filters.
                   </td>
@@ -209,7 +222,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
                 table.getRowModel().rows.map((row) => (
                   <tr
                     key={row.id}
-                    className="group border-b border-zinc-800/60 transition-colors hover:bg-zinc-900/60"
+                    className="group border-b border-line-soft transition-colors even:bg-zebra hover:bg-row-hover"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td
@@ -229,8 +242,8 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       )}
 
       {/* ── Footer ── */}
-      <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-4 py-2">
-        <span className="font-mono text-xs text-zinc-600">
+      <div className="flex items-center justify-between border-t border-line bg-background px-4 py-2">
+        <span className="font-mono text-xs text-dim">
           {logs.length.toLocaleString()} of {total.toLocaleString()} log
           {total !== 1 ? "s" : ""}
           {USE_MOCK ? " (mock)" : ""}
@@ -241,7 +254,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
               type="button"
               onClick={() => void realQuery.fetchNextPage()}
               disabled={realQuery.isFetchingNextPage}
-              className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-1 px-2.5 py-1 text-fg-2 transition-colors hover:border-faint hover:text-foreground disabled:opacity-50"
             >
               {realQuery.isFetchingNextPage && (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -250,7 +263,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
             </button>
           )}
           {!USE_MOCK && !realQuery.hasNextPage && logs.length > 0 && (
-            <span className="text-zinc-700">end of results</span>
+            <span className="text-faint">end of results</span>
           )}
         </div>
       </div>
@@ -258,8 +271,9 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── Command Palette ── */}
       <CommandPalette
         open={paletteOpen}
-        onOpenChange={setPaletteOpen}
+        onOpenChange={(v) => { setPaletteOpen(v); if (!v) setPaletteCategory(null) }}
         categories={resolvedCategories}
+        openWithCategory={paletteCategory}
       />
     </div>
   )

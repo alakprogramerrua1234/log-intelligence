@@ -27,13 +27,23 @@ class MeiliClient(Protocol):
     """Lo que el backend de búsqueda y el indexador necesitan de Meilisearch."""
 
     def search(
-        self, index: str, q: str, filter_expression: str, page: int, hits_per_page: int
+        self,
+        index: str,
+        q: str,
+        filter_expression: str,
+        page: int,
+        hits_per_page: int,
+        sort: Sequence[str] = (),
     ) -> SearchResult: ...
 
     def ensure_index(self, index: str, primary_key: str) -> None: ...
 
     def update_settings(
-        self, index: str, filterable: Sequence[str], searchable: Sequence[str]
+        self,
+        index: str,
+        filterable: Sequence[str],
+        searchable: Sequence[str],
+        sortable: Sequence[str] = (),
     ) -> None: ...
 
     def replace_documents(self, index: str, documents: Iterable[Mapping[str, Any]]) -> int: ...
@@ -60,7 +70,13 @@ class HttpMeiliClient:
         return response.json() if response.content else None
 
     def search(
-        self, index: str, q: str, filter_expression: str, page: int, hits_per_page: int
+        self,
+        index: str,
+        q: str,
+        filter_expression: str,
+        page: int,
+        hits_per_page: int,
+        sort: Sequence[str] = (),
     ) -> SearchResult:
         # `page`/`hitsPerPage` en vez de `offset`/`limit`: es la forma de obtener
         # `totalHits` exacto. Con offset/limit Meilisearch solo da una estimación,
@@ -73,6 +89,8 @@ class HttpMeiliClient:
         }
         if filter_expression:
             body["filter"] = filter_expression
+        if sort:
+            body["sort"] = list(sort)
 
         payload = self._request("POST", f"/indexes/{index}/search", json=body)
         hits = payload.get("hits", [])
@@ -91,7 +109,11 @@ class HttpMeiliClient:
                 raise
 
     def update_settings(
-        self, index: str, filterable: Sequence[str], searchable: Sequence[str]
+        self,
+        index: str,
+        filterable: Sequence[str],
+        searchable: Sequence[str],
+        sortable: Sequence[str] = (),
     ) -> None:
         self._request(
             "PATCH",
@@ -99,6 +121,7 @@ class HttpMeiliClient:
             json={
                 "filterableAttributes": list(filterable),
                 "searchableAttributes": list(searchable),
+                "sortableAttributes": list(sortable),
             },
         )
 

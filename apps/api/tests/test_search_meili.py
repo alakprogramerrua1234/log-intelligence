@@ -37,7 +37,13 @@ class FakeMeiliClient:
         self.indexes: list[tuple[str, str]] = []
 
     def search(
-        self, index: str, q: str, filter_expression: str, page: int, hits_per_page: int
+        self,
+        index: str,
+        q: str,
+        filter_expression: str,
+        page: int,
+        hits_per_page: int,
+        sort: Sequence[str] = (),
     ) -> SearchResult:
         self.searches.append(
             {
@@ -46,6 +52,7 @@ class FakeMeiliClient:
                 "filter": filter_expression,
                 "page": page,
                 "hits_per_page": hits_per_page,
+                "sort": list(sort),
             }
         )
         return self.result
@@ -54,9 +61,19 @@ class FakeMeiliClient:
         self.indexes.append((index, primary_key))
 
     def update_settings(
-        self, index: str, filterable: Sequence[str], searchable: Sequence[str]
+        self,
+        index: str,
+        filterable: Sequence[str],
+        searchable: Sequence[str],
+        sortable: Sequence[str] = (),
     ) -> None:
-        self.settings.append({"filterable": list(filterable), "searchable": list(searchable)})
+        self.settings.append(
+            {
+                "filterable": list(filterable),
+                "searchable": list(searchable),
+                "sortable": list(sortable),
+            }
+        )
 
     def replace_documents(self, index: str, documents: Iterable[Mapping[str, Any]]) -> int:
         batch = list(documents)
@@ -144,7 +161,7 @@ def test_next_cursor_advances_one_page() -> None:
 
 def test_last_page_has_no_next_cursor() -> None:
     client = FakeMeiliClient(SearchResult(ids=[5], total_hits=5, total_pages=3))
-    cursor = encode_cursor("page", 3)
+    cursor = encode_cursor("page", page=3)
     assert MeilisearchBackend(client).search("x", {}, 2, cursor).next_cursor is None
 
 
@@ -158,13 +175,13 @@ def test_empty_result_has_no_next_cursor() -> None:
 def test_rejects_a_postgres_cursor() -> None:
     client = FakeMeiliClient()
     with pytest.raises(InvalidCursorError):
-        MeilisearchBackend(client).search("x", {}, 10, encode_cursor("id", 7))
+        MeilisearchBackend(client).search("x", {}, 10, encode_cursor("id", id=7))
 
 
 def test_rejects_a_forged_page_zero() -> None:
     client = FakeMeiliClient()
     with pytest.raises(InvalidCursorError):
-        MeilisearchBackend(client).search("x", {}, 10, encode_cursor("page", 0))
+        MeilisearchBackend(client).search("x", {}, 10, encode_cursor("page", page=0))
 
 
 def test_limit_becomes_hits_per_page() -> None:

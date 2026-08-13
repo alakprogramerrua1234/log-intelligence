@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.models import FilterCategory
-from src.repositories import FILTERABLE, DetectionRecord
+from src.repositories import FILTERABLE, SORTABLE, DetectionRecord
 from src.search.client import MeiliClient
 
 PRIMARY_KEY = "id"
@@ -60,11 +60,26 @@ def searchable_attributes(keys: Sequence[str]) -> list[str]:
     return attributes
 
 
+def sortable_attributes(keys: Sequence[str]) -> list[str]:
+    """Atributos por los que se puede ordenar, derivados de `SORTABLE`.
+
+    Solo se declaran los que existen en el documento indexado: si una categoría
+    está deshabilitada, su campo no se indexa y ordenar por él fallaría.
+    """
+    indexed = set(keys)
+    return [
+        binding.document_field
+        for binding in SORTABLE.values()
+        if binding.document_field in indexed
+    ]
+
+
 @dataclass(frozen=True)
 class IndexReport:
     documents: int
     filterable: list[str]
     searchable: list[str]
+    sortable: list[str]
 
 
 def _batched(
@@ -95,11 +110,14 @@ def reindex(
     keys = [category.key for category in categories]
     filterable = filterable_attributes(keys)
     searchable = searchable_attributes(keys)
+    sortable = sortable_attributes(keys)
 
     client.ensure_index(index, PRIMARY_KEY)
-    client.update_settings(index, filterable, searchable)
+    client.update_settings(index, filterable, searchable, sortable)
 
     total = sum(
         client.replace_documents(index, batch) for batch in _batched(records, keys, batch_size)
     )
-    return IndexReport(documents=total, filterable=filterable, searchable=searchable)
+    return IndexReport(
+        documents=total, filterable=filterable, searchable=searchable, sortable=sortable
+    )

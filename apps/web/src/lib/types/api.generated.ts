@@ -69,11 +69,13 @@ export interface paths {
         };
         /**
          * List Logs
-         * @description `GET /logs?filter[<key>]=<value>&q=...&limit=...&cursor=...`
+         * @description `GET /logs?filter[<key>]=<value>&q=...&sort=...&limit=...&cursor=...`
          *
          *     Las claves de filtro no se enumeran aquí: se descubren del catálogo en
-         *     runtime. Una clave desconocida devuelve 400 (`unknown_filter_category`);
-         *     un cursor manipulado o de otro backend, 400 (`invalid_cursor`).
+         *     runtime. Devuelven 400 una clave de filtro desconocida
+         *     (`unknown_filter_category`), una clave de orden no soportada
+         *     (`unknown_sort_key`) y un cursor manipulado o de otro listado
+         *     (`invalid_cursor`).
          */
         get: operations["listLogs"];
         put?: never;
@@ -327,6 +329,9 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque cursor from a previous next_cursor */
                 cursor?: string | null;
+                /** @description Sortable column key */
+                sort?: string;
+                sort_dir?: string;
             };
             header?: never;
             path?: never;
@@ -343,7 +348,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedDetections"];
                 };
             };
-            /** @description Unknown filter category or bad cursor */
+            /** @description Unknown filter category, sort key or cursor */
             400: {
                 headers: {
                     [name: string]: unknown;

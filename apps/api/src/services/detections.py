@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from src.repositories import DetectionRecord, DetectionRepository, FilterCategoryRepository
 from src.schemas.detection import DetectionOut, PaginatedDetections, TechniqueRef
 from src.search.backend import SearchBackend
-from src.services.filters import validate_filters
+from src.services.filters import parse_sort, validate_filters
 
 DEFAULT_LIMIT = 200
 MAX_LIMIT = 500
@@ -28,14 +28,17 @@ class DetectionService:
         q: str = "",
         limit: int = DEFAULT_LIMIT,
         cursor: str | None = None,
+        sort: str = "",
+        sort_dir: str = "asc",
     ) -> PaginatedDetections:
         enabled_keys = [category.key for category in self._catalog.list_enabled()]
         validate_filters(filters, enabled_keys)
+        sort_spec = parse_sort(sort, sort_dir)
 
         # El backend decide qué casa y en qué orden; el repositorio solo hidrata.
         # Ese reparto es lo que permite cambiar Postgres por Meilisearch sin
         # tocar ni el router ni la forma de la respuesta.
-        page = self._search.search(q, filters, limit, cursor)
+        page = self._search.search(q, filters, limit, cursor, sort_spec)
         records = self._detections.get_by_ids(page.ids)
 
         return PaginatedDetections(

@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from src.repositories import SortSpec
+
 
 @dataclass(frozen=True)
 class SearchPage:
@@ -29,6 +31,11 @@ class SearchBackend(Protocol):
         filters: Mapping[str, Sequence[str]],
         limit: int,
         cursor: str | None,
+        sort: SortSpec | None = None,
     ) -> SearchPage:
-        """`q` vacío significa "sin búsqueda libre": solo filtros."""
+        """`q` vacío significa "sin búsqueda libre": solo filtros.
+
+        `sort` a `None` deja que el backend use su orden natural: `id` en
+        Postgres, relevancia en Meilisearch.
+        """
         ...

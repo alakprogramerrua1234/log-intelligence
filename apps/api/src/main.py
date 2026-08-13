@@ -10,7 +10,7 @@ from src.repositories import FilterCategoryRepository
 from src.routers import detections, filters
 from src.schemas.errors import ErrorOut
 from src.search import InvalidCursorError
-from src.services import UnknownFilterCategoryError, validate_catalog
+from src.services import UnknownFilterCategoryError, UnknownSortKeyError, validate_catalog
 
 API_PREFIX = "/api/v1"
 
@@ -48,7 +48,14 @@ async def _handle_invalid_cursor(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content=error.model_dump())
 
 
+async def _handle_unknown_sort_key(_: Request, exc: Exception) -> JSONResponse:
+    keys = [exc.key] if isinstance(exc, UnknownSortKeyError) else []
+    error = ErrorOut(detail=str(exc), code="unknown_sort_key", keys=keys)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
 app.add_exception_handler(UnknownFilterCategoryError, _handle_unknown_filter_category)
+app.add_exception_handler(UnknownSortKeyError, _handle_unknown_sort_key)
 app.add_exception_handler(InvalidCursorError, _handle_invalid_cursor)
 
 # `include_router` con prefijo en vez de `app.mount`: un sub-app montado queda

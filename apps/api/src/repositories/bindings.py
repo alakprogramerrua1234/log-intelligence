@@ -89,6 +89,44 @@ FILTERABLE: Mapping[str, FilterBinding] = {
 }
 
 
+@dataclass(frozen=True)
+class SortSpec:
+    """Ordenación pedida por el cliente, ya validada contra `SORTABLE`."""
+
+    key: str
+    descending: bool
+
+    @property
+    def cursor_kind(self) -> str:
+        """Identifica el listado. Cambiar de orden invalida los cursores previos."""
+        return f"sort:{self.key}:{'desc' if self.descending else 'asc'}"
+
+
+@dataclass(frozen=True)
+class SortBinding:
+    """Une una clave de ordenación con la columna que la implementa.
+
+    Las claves son las mismas que los `id` de columna de TanStack Table en el
+    frontend, para que la tabla pueda pedir `sort=<column.id>` sin traducir.
+    """
+
+    key: str
+    column: InstrumentedAttribute[Any]
+    #: Atributo equivalente en el documento de Meilisearch.
+    document_field: str
+
+
+SORTABLE: Mapping[str, SortBinding] = {
+    binding.key: binding
+    for binding in (
+        SortBinding("log_source_name", LogSource.name, "log_source"),
+        SortBinding("event_id", EventId.name, "event_id"),
+        SortBinding("tactic", Tactic.name, "tactic"),
+        SortBinding("technique_id", Technique.id, "technique"),
+    )
+}
+
+
 def search_columns() -> list[InstrumentedAttribute[Any]]:
     """Columnas que cubre la búsqueda libre `q`: todo lo filtrable, sin duplicar.
 

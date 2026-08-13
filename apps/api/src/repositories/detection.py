@@ -4,13 +4,24 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, literal, select, tuple_
 from sqlalchemy.orm import Session
 
 from src.models import Detection, EventId, LogSource, Platform, Subtechnique, Tactic, Technique
-from src.repositories.bindings import apply_filters, search_predicate
+from src.repositories.bindings import SORTABLE, SortSpec, apply_filters, search_predicate
 
 _SelectT = TypeVar("_SelectT", bound=Select[Any])
+
+
+@dataclass(frozen=True)
+class MatchRow:
+    """Una fila que casa: su id y, si hay ordenación, el valor por el que ordena.
+
+    El valor viaja de vuelta al cursor para poder retomar el keyset compuesto.
+    """
+
+    id: int
+    sort_value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,19 +57,46 @@ class DetectionRepository:
         ).scalar_one()
         return total
 
-    def matching_ids(
+    def matching(
         self,
         filters: Mapping[str, Sequence[str]],
         q: str,
         limit: int,
-        after_id: int | None = None,
-    ) -> list[int]:
-        """Ids que casan, en orden estable por `id` (keyset a partir de `after_id`)."""
+        after: MatchRow | None = None,
+        sort: SortSpec | None = None,
+    ) -> list[MatchRow]:
+        """Filas que casan, en orden estable, arrancando después de `after`.
+
+        Sin ordenación explícita el keyset va sobre `id`. Con ordenación el
+        keyset es **compuesto** `(columna, id)`: la columna de orden no es única,
+        así que sin el `id` como desempate una página podría repetir o saltarse
+        filas con el mismo valor. `id` es la PK, y eso hace el par único.
+        """
         stmt = self._matching(filters, q)
-        if after_id is not None:
-            stmt = stmt.where(Detection.id > after_id)
-        stmt = stmt.order_by(Detection.id).limit(limit)
-        return [row[0] for row in self._db.execute(stmt).all()]
+
+        if sort is None:
+            if after is not None:
+                stmt = stmt.where(Detection.id > after.id)
+            rows = self._db.execute(stmt.order_by(Detection.id).limit(limit)).all()
+            return [MatchRow(id=row[0], sort_value=None) for row in rows]
+
+        column = SORTABLE[sort.key].column
+        stmt = stmt.add_columns(column.label("sort_value"))
+
+        if after is not None:
+            # Comparación de tuplas: la forma portable de expresar
+            # "(columna, id) va después de (valor, id)" en una sola condición.
+            position = tuple_(column, Detection.id)
+            anchor = tuple_(literal(after.sort_value), literal(after.id))
+            stmt = stmt.where(position < anchor if sort.descending else position > anchor)
+
+        direction = (
+            (column.desc(), Detection.id.desc())
+            if sort.descending
+            else (column.asc(), Detection.id.asc())
+        )
+        rows = self._db.execute(stmt.order_by(*direction).limit(limit)).all()
+        return [MatchRow(id=row[0], sort_value=row[1]) for row in rows]
 
     def get_by_ids(self, ids: Sequence[int]) -> list[DetectionRecord]:
         """Hidrata ids preservando el orden recibido.

@@ -10,7 +10,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Protocol
 
 from src.models import FilterCategory
-from src.repositories import FILTERABLE, FilterCategoryRepository, SuggestRecord
+from src.repositories import (
+    FILTERABLE,
+    SORTABLE,
+    FilterCategoryRepository,
+    SortSpec,
+    SuggestRecord,
+)
 
 _FILTER_PREFIX = "filter["
 _FILTER_SUFFIX = "]"
@@ -27,8 +33,30 @@ class UnknownFilterCategoryError(Exception):
         super().__init__(f"Unknown filter categories: {', '.join(self.keys)}")
 
 
+class UnknownSortKeyError(Exception):
+    """Se pidió ordenar por una columna que no es ordenable."""
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(f"Unknown sort key: {key}")
+
+
 class FilterCatalogError(RuntimeError):
     """`filter_category` (DB) y `FILTERABLE` (código) no concuerdan."""
+
+
+def parse_sort(sort: str, sort_dir: str) -> SortSpec | None:
+    """Traduce los parámetros de orden a un `SortSpec` validado.
+
+    Rechaza claves desconocidas en vez de ignorarlas: si la tabla pide ordenar
+    por una columna que el backend no sabe ordenar, devolver los datos en otro
+    orden sin avisar es el mismo fallo silencioso que el de los filtros.
+    """
+    if not sort:
+        return None
+    if sort not in SORTABLE:
+        raise UnknownSortKeyError(sort)
+    return SortSpec(key=sort, descending=sort_dir == "desc")
 
 
 class CategorySpec(Protocol):

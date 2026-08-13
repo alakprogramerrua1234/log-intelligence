@@ -485,7 +485,7 @@
     },
     "/api/v1/logs": {
       "get": {
-        "description": "`GET /logs?filter[<key>]=<value>&q=...&limit=...&cursor=...`\n\nLas claves de filtro no se enumeran aquí: se descubren del catálogo en\nruntime. Una clave desconocida devuelve 400 (`unknown_filter_category`);\nun cursor manipulado o de otro backend, 400 (`invalid_cursor`).",
+        "description": "`GET /logs?filter[<key>]=<value>&q=...&sort=...&limit=...&cursor=...`\n\nLas claves de filtro no se enumeran aquí: se descubren del catálogo en\nruntime. Devuelven 400 una clave de filtro desconocida\n(`unknown_filter_category`), una clave de orden no soportada\n(`unknown_sort_key`) y un cursor manipulado o de otro listado\n(`invalid_cursor`).",
         "operationId": "listLogs",
         "parameters": [
           {
@@ -529,6 +529,29 @@
               "description": "Opaque cursor from a previous next_cursor",
               "title": "Cursor"
             }
+          },
+          {
+            "description": "Sortable column key",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Sortable column key",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Dir",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -550,7 +573,7 @@
                 }
               }
             },
-            "description": "Unknown filter category or bad cursor"
+            "description": "Unknown filter category, sort key or cursor"
           },
           "422": {
             "content": {

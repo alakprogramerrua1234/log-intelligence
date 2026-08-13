@@ -13,20 +13,23 @@ interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categories: FilterCategory[]
+  openWithCategory?: FilterCategory | null
 }
 
-// Color per category key — badge bg + text
+// Color per category key — badge bg + text (alpha bg + dark: text so both themes read well)
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  platform:      { bg: "bg-slate-800",   text: "text-slate-300" },
-  log_source:    { bg: "bg-zinc-700",    text: "text-zinc-300"  },
-  event_id:      { bg: "bg-emerald-900", text: "text-emerald-400" },
-  tactic:        { bg: "bg-amber-900",   text: "text-amber-400"  },
-  technique:     { bg: "bg-sky-900",     text: "text-sky-400"    },
-  subtechnique:  { bg: "bg-violet-900",  text: "text-violet-400" },
+  platform:      { bg: "bg-slate-500/15",   text: "text-slate-600 dark:text-slate-300" },
+  log_source:    { bg: "bg-zinc-500/15",    text: "text-zinc-600 dark:text-zinc-300"  },
+  event_id:      { bg: "bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-300" },
+  tactic:        { bg: "bg-amber-500/15",   text: "text-amber-700 dark:text-amber-300"  },
+  technique:     { bg: "bg-sky-500/15",     text: "text-sky-700 dark:text-sky-300"    },
+  subtechnique:  { bg: "bg-violet-500/15",  text: "text-violet-700 dark:text-violet-300" },
 }
+
+const DEFAULT_CATEGORY_COLORS = { bg: "bg-zinc-500/15", text: "text-zinc-600 dark:text-zinc-300" }
 
 function CategoryBadge({ category, label }: { category: string; label: string }) {
-  const colors = CATEGORY_COLORS[category] ?? { bg: "bg-zinc-800", text: "text-zinc-400" }
+  const colors = CATEGORY_COLORS[category] ?? DEFAULT_CATEGORY_COLORS
   return (
     <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${colors.bg} ${colors.text}`}>
       {label}
@@ -43,7 +46,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced
 }
 
-export function CommandPalette({ open, onOpenChange, categories }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, categories, openWithCategory }: CommandPaletteProps) {
   const [inputValue, setInputValue] = useState("")
   const [pinnedCategory, setPinnedCategory] = useState<FilterCategory | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
@@ -51,11 +54,15 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
   const { setFilter, filters } = useFilterParams()
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      if (openWithCategory) setPinnedCategory(openWithCategory)
+    } else {
       setInputValue("")
       setPinnedCategory(null)
       setCategoryPickerOpen(false)
     }
+  // openWithCategory is only meaningful at the moment open transitions to true
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
@@ -144,18 +151,18 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
       <div className="relative w-full max-w-xl">
 
         {/* Palette card */}
-        <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="overflow-hidden rounded-xl border border-line bg-surface-1 shadow-2xl">
           <Command shouldFilter={false}>
             {/* Input row */}
-            <div className="flex items-center gap-2 border-b border-zinc-800 px-3">
+            <div className="flex items-center gap-2 border-b border-line-soft px-3">
               {isLoading
-                ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-zinc-500" />
-                : <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+                ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-dim" />
+                : <Search className="h-4 w-4 shrink-0 text-dim" />
               }
 
               {/* Pinned category chip */}
               {pinnedCategory && (
-                <span className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${CATEGORY_COLORS[pinnedCategory.key]?.bg ?? "bg-zinc-800"} ${CATEGORY_COLORS[pinnedCategory.key]?.text ?? "text-zinc-400"}`}>
+                <span className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${CATEGORY_COLORS[pinnedCategory.key]?.bg ?? DEFAULT_CATEGORY_COLORS.bg} ${CATEGORY_COLORS[pinnedCategory.key]?.text ?? DEFAULT_CATEGORY_COLORS.text}`}>
                   {pinnedCategory.label}
                   <button
                     onClick={clearPinnedCategory}
@@ -176,7 +183,7 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                     ? `Search in ${pinnedCategory.label}…`
                     : "Search across all categories, or type platform: tactic: …"
                 }
-                className="flex h-12 w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                className="flex h-12 w-full bg-transparent text-sm text-foreground placeholder:text-faint focus:outline-none"
                 autoFocus
               />
 
@@ -185,8 +192,8 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                 onClick={() => setCategoryPickerOpen((v) => !v)}
                 className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
                   categoryPickerOpen
-                    ? "bg-zinc-700 text-zinc-200"
-                    : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                    ? "bg-surface-2 text-foreground"
+                    : "text-dim hover:bg-surface-2 hover:text-fg-2"
                 }`}
                 aria-label="Filter by category"
               >
@@ -197,7 +204,7 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
             </div>
 
             <Command.List className="max-h-[400px] overflow-y-auto p-1">
-              <Command.Empty className="py-8 text-center text-sm text-zinc-600">
+              <Command.Empty className="py-8 text-center text-sm text-dim">
                 No results
               </Command.Empty>
 
@@ -209,11 +216,11 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                       key={cat.key}
                       value={`filter:${cat.key}`}
                       onSelect={() => setInputValue(`${cat.key}:`)}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg-2 hover:bg-row-hover aria-selected:bg-row-hover"
                     >
-                      <Filter className="h-3.5 w-3.5 text-zinc-600" />
+                      <Filter className="h-3.5 w-3.5 text-faint" />
                       <span>{cat.label}</span>
-                      <span className="ml-auto font-mono text-[10px] text-zinc-600">{cat.key}:</span>
+                      <span className="ml-auto font-mono text-[10px] text-faint">{cat.key}:</span>
                     </Command.Item>
                   ))}
                 </Command.Group>
@@ -226,10 +233,10 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                     <Command.Item
                       value={`filtervalue:${activeCategory.key}:${filterQuery}`}
                       onSelect={() => handleSelectFilter(activeCategory.key, filterQuery)}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg-2 hover:bg-row-hover aria-selected:bg-row-hover"
                     >
-                      <Filter className="h-3.5 w-3.5 text-zinc-600" />
-                      Add <span className="ml-1 text-emerald-400">{filterQuery}</span>
+                      <Filter className="h-3.5 w-3.5 text-faint" />
+                      Add <span className="ml-1 font-semibold text-accent">{filterQuery}</span>
                       <span className="ml-1">as {activeCategory.label} filter</span>
                     </Command.Item>
                   )}
@@ -240,12 +247,12 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                         key={val}
                         value={`filtervalue:${activeCategory.key}:${val}`}
                         onSelect={() => handleSelectFilter(activeCategory.key, val)}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-fg-2 hover:bg-row-hover aria-selected:bg-row-hover"
                       >
-                        <Filter className="h-3.5 w-3.5 text-zinc-600" />
-                        <span className={isActive ? "text-emerald-400" : ""}>{val}</span>
+                        <Filter className="h-3.5 w-3.5 text-faint" />
+                        <span className={isActive ? "font-semibold text-accent" : ""}>{val}</span>
                         {isActive && (
-                          <span className="ml-auto font-mono text-[10px] text-emerald-700">active</span>
+                          <span className="ml-auto font-mono text-[10px] text-accent">active</span>
                         )}
                       </Command.Item>
                     )
@@ -263,14 +270,14 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                         key={`${item.category}:${item.value}:${i}`}
                         value={`suggest:${item.category}:${item.value}`}
                         onSelect={() => handleSelectFilter(item.category, item.value)}
-                        className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                        className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-row-hover aria-selected:bg-row-hover"
                       >
-                        <span className={`flex-1 truncate ${isActive ? "text-emerald-400" : "text-zinc-200"}`}>
+                        <span className={`flex-1 truncate ${isActive ? "font-semibold text-accent" : "text-foreground"}`}>
                           {item.display}
                         </span>
                         <CategoryBadge category={item.category} label={item.label} />
                         {isActive && (
-                          <span className="font-mono text-[10px] text-emerald-700">active</span>
+                          <span className="font-mono text-[10px] text-accent">active</span>
                         )}
                       </Command.Item>
                     )
@@ -284,16 +291,16 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                   <Command.Item
                     value={`search:${inputValue}`}
                     onSelect={handleSearch}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 aria-selected:bg-zinc-800"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-dim hover:bg-row-hover aria-selected:bg-row-hover"
                   >
-                    <Search className="h-3.5 w-3.5 text-zinc-600" />
-                    Search logs for <span className="ml-1 text-zinc-200">&ldquo;{inputValue}&rdquo;</span>
+                    <Search className="h-3.5 w-3.5 text-faint" />
+                    Search logs for <span className="ml-1 text-foreground">&ldquo;{inputValue}&rdquo;</span>
                   </Command.Item>
                 </Command.Group>
               )}
             </Command.List>
 
-            <div className="border-t border-zinc-800 px-3 py-2 text-[10px] text-zinc-700">
+            <div className="border-t border-line-soft px-3 py-2 text-[10px] text-faint">
               <span className="mr-3"><kbd className="font-mono">↑↓</kbd> navigate</span>
               <span className="mr-3"><kbd className="font-mono">↵</kbd> select</span>
               <span><kbd className="font-mono">esc</kbd> close</span>
@@ -303,13 +310,13 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
 
         {/* Category picker dropdown — sibling of palette card, not clipped by overflow-hidden */}
         {categoryPickerOpen && (
-          <div className="absolute right-0 top-[calc(3rem+2px)] z-20 w-56 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl">
-            <div className="border-b border-zinc-800 px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="absolute right-0 top-[calc(3rem+2px)] z-20 w-56 overflow-hidden rounded-lg border border-line bg-surface-2 shadow-2xl">
+            <div className="border-b border-line-soft px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-dim">
               Filter by category
             </div>
             <div className="p-1">
               {categories.map((cat) => {
-                const colors = CATEGORY_COLORS[cat.key] ?? { bg: "bg-zinc-800", text: "text-zinc-400" }
+                const colors = CATEGORY_COLORS[cat.key] ?? DEFAULT_CATEGORY_COLORS
                 const isPinned = pinnedCategory?.key === cat.key
                 return (
                   <button
@@ -317,15 +324,15 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
                     onClick={() => handlePinCategory(cat)}
                     className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
                       isPinned
-                        ? "bg-zinc-800 text-zinc-100"
-                        : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+                        ? "bg-accent-weak text-foreground"
+                        : "text-fg-2 hover:bg-row-hover hover:text-foreground"
                     }`}
                   >
                     <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ${colors.bg} ${colors.text}`}>
                       {cat.key}
                     </span>
                     <span className="flex-1">{cat.label}</span>
-                    {isPinned && <span className="text-[10px] text-emerald-500">✓</span>}
+                    {isPinned && <span className="text-[10px] text-accent">✓</span>}
                   </button>
                 )
               })}
@@ -340,7 +347,7 @@ export function CommandPalette({ open, onOpenChange, categories }: CommandPalett
 
 function GroupHeading({ children }: { children: React.ReactNode }) {
   return (
-    <span className="px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+    <span className="px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">
       {children}
     </span>
   )
