@@ -33,11 +33,11 @@ No hay sync con APIs externas de MITRE. No hay parsers de STIX. Si falta dato, s
 
 | Capa | Tecnología | Por qué |
 |---|---|---|
-| Frontend framework | Next.js 15 (App Router) + TS | SSR/streaming, RSC para tablas pesadas |
+| Frontend framework | Next.js 16 (App Router) + TS | SSR/streaming, RSC para tablas pesadas |
 | UI components | shadcn/ui + Tailwind | Componentes que viven en el repo, editables |
-| Tabla principal | TanStack Table v8 | Virtualización, server-driven sort/filter |
+| Tabla principal | TanStack Table v8 + TanStack Virtual | Virtualización real de filas, server-driven sort/filter |
 | Data fetching | TanStack Query | Cache, revalidación, infinite scroll |
-| Filtros en URL | nuqs | Compartir vistas filtradas entre analistas |
+| Filtros en URL | History API + store propio (`src/lib/url-state.ts`) | Claves `f.*` descubiertas en runtime — incompatible con la API de `nuqs`, que exige declararlas en compilación |
 | Command palette | cmdk | Búsqueda global con autocomplete |
 | Backend | FastAPI + Pydantic v2 | Ecosistema Python para MITRE/Sigma |
 | ORM | SQLAlchemy 2.0 + Alembic | Standard maduro en Python |
@@ -54,17 +54,17 @@ No hay sync con APIs externas de MITRE. No hay parsers de STIX. Si falta dato, s
 ```
 log-intelligence/
 ├── apps/
-│   ├── web/                  # Next.js 15
+│   ├── web/                  # Next.js 16
 │   │   ├── src/app/          # Rutas
 │   │   ├── src/components/
 │   │   │   ├── ui/           # shadcn (no editar a mano)
-│   │   │   ├── log-table/    # Tabla principal y celdas
-│   │   │   ├── filters/      # Chips, dropdowns, command palette
-│   │   │   └── platform/     # Tarjetas y selector de plataforma
+│   │   │   ├── log-table/    # Tabla virtualizada y celdas
+│   │   │   ├── filters/      # Chips, command palette
+│   │   │   └── platform/     # Selector de plataforma
 │   │   ├── src/lib/
 │   │   │   ├── api.ts        # Cliente HTTP tipado contra FastAPI
-│   │   │   ├── types/        # Tipos espejo de los Pydantic schemas
-│   │   │   └── search-params.ts # Schemas nuqs
+│   │   │   ├── url-state.ts  # Dueño único de los search params (filtros, q, view)
+│   │   │   └── types/        # Tipos generados desde el OpenAPI de la API
 │   │   └── src/hooks/
 │   └── api/                  # FastAPI
 │       ├── src/
@@ -165,7 +165,7 @@ TEST_DATABASE_URL=postgresql+psycopg://logintel:logintel@localhost:5432/logintel
 ## 6. Decisiones arquitectónicas vivas
 
 1. **La tabla principal es server-driven.** Filtros, sort y paginación viajan a la API. Nada de filtrar 50k+ filas en cliente.
-2. **Filtros activos viven en la URL** (vía `nuqs`). Permite compartir vistas filtradas entre analistas — caso de uso real en SOC.
+2. **Filtros activos viven en la URL** (vía `src/lib/url-state.ts`, no `nuqs` — su API exige declarar las claves en compilación, incompatible con categorías `f.*` descubiertas en runtime). Permite compartir vistas filtradas entre analistas — caso de uso real en SOC. Ver `ARCHITECTURE.md` §4.2.
 3. **El sistema de filtros es genérico/parametrizable.** Ni el frontend ni el backend hardcodean qué categorías existen. El backend expone qué se puede filtrar (vía `/filters/categories`) y el frontend lo renderiza dinámicamente. Esto permite añadir filtros nuevos sin cambiar el contrato API ni redeploy del frontend.
 4. **El "modo comprimido" no es un filtro de frontend.** El backend devuelve la representación correcta según el contexto de filtros (jerarquía configurable). Ver `ARCHITECTURE.md` §4.
 5. **El dato lo produce un proyecto upstream**, no esta app. Aquí solo ingerimos, almacenamos y servimos. Si falta o está mal un dato, se corrige upstream y se reingesta.

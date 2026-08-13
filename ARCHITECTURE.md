@@ -244,7 +244,7 @@ La vista completa siempre devuelve la fila atómica.
 
 ### 4.2 Filtros y URL
 
-Los filtros se serializan en la URL vía `nuqs`. Esquema **genérico**:
+Los filtros viven en la URL. Esquema **genérico**:
 
 ```
 /explore?f.<categoryKey>=valor&f.<categoryKey>=otro&q=process&view=compact
@@ -259,7 +259,9 @@ Ejemplos (las claves concretas dependen de lo que devuelva `/filters/categories`
 
 Cada categoría puede aparecer múltiples veces para multi-selección: `?f.tactic=execution&f.tactic=persistence`.
 
-**Implementación frontend:** un único schema de `nuqs` que parsea cualquier `f.*` como arrays de strings, sin enumerar las claves. Las claves válidas se validan contra `/filters/categories` cuando se renderizan los chips/dropdowns.
+**Implementación frontend (`apps/web/src/hooks/useFilterParams.ts` + `src/lib/url-state.ts`):** un parser que lee cualquier `f.*` como arrays de strings sin enumerar las claves. Las claves válidas se validan contra `/filters/categories` cuando se renderizan los chips/dropdowns; una clave que la API no reconoce vuelve como `400 unknown_filter_category`, no se ignora en silencio.
+
+Se probó `nuqs` primero y se retiró: su API pide declarar las claves en tiempo de compilación, incompatible con categorías descubiertas en runtime — justo la premisa de este sistema de filtros. La URL se escribe con la History API (`history.pushState`, conservando `history.state` porque ahí vive el árbol interno del router de Next) y un store mínimo notifica a los componentes suscritos vía `useSyncExternalStore`. No se usa `router.push`: envuelve la navegación en una transición de React, y las actualizaciones de TanStack Query durante esa transición hacían que no llegara a confirmarse nunca — la página se quedaba sin responder a ninguna navegación posterior. Por el mismo motivo, la navegación entre secciones (`SiteHeader`) usa `<a>` en vez de `<Link>`: con la URL escrita a mano, el router de Next queda apuntando a un estado que no reconoce y sus propios `<Link>` dejan de confirmar transiciones.
 
 **Por qué URL y no solo state:** un analista que encuentra un patrón puede pegar la URL en Slack del SOC y el resto la abre con la misma vista exacta.
 
@@ -290,8 +292,10 @@ El sistema jerárquico se implementa en el endpoint `/logs` consultando la confi
 La búsqueda vive detrás de un contrato de un solo método (`apps/api/src/search/backend.py`):
 
 ```python
-def search(q, filters, limit, cursor) -> SearchPage   # ids, total, next_cursor
+def search(q, filters, limit, cursor, sort) -> SearchPage   # ids, total, next_cursor
 ```
+
+`sort` es opcional y viaja como `SortSpec(key, descending)`, validado contra `SORTABLE` (`apps/api/src/repositories/bindings.py`) — misma idea que `FILTERABLE`, pero para columnas ordenables. Con ordenación activa el cursor deja de ser un simple `id`: es un keyset compuesto `(columna, id)`, con `id` como desempate. Sin ese desempate, dos filas con el mismo valor de columna podrían repetirse o perderse al cambiar de página. El `kind` del cursor codifica la clave y el sentido de la ordenación, así que un cursor de otra ordenación se rechaza (`400 invalid_cursor`) en vez de producir una página incoherente.
 
 **Devuelve ids, no filas.** Hidratar es cosa de `DetectionRepository`. Ese seam estrecho es lo que permite dos implementaciones sin que ninguna conozca la forma de la respuesta HTTP ni los joins:
 
@@ -380,21 +384,31 @@ python -m src.ingest.load --source <ruta-al-csv> [--dry-run]
 
 ```
 log-table/
-├── LogTable.tsx              # Server Component, fetch inicial
-├── LogTableClient.tsx        # "use client", maneja interacciones
-├── columns.ts                # Definiciones TanStack
-├── ViewToggle.tsx            # Compact / Full
+├── LogTableClient.tsx        # "use client", tabla + interacciones
+├── ExploreHeader.tsx         # Título, lee la plataforma activa del cliente
+├── columns.tsx                # Definiciones TanStack (full + compact)
+├── ViewToggle.tsx             # Compact / Full
 └── cells/
-    ├── PlatformCell.tsx
-    ├── TechniqueCell.tsx     # Chips clicables
+    ├── FilterableCell.tsx     # Celda -> filtro. Sin hooks: se monta ~1 vez por celda
+    ├── TechniqueCell.tsx      # Chips clicables
     └── EventIdCell.tsx
 
 filters/
-├── CommandPalette.tsx        # cmdk
-├── FilterChips.tsx           # Filtros activos visibles
-├── CategoryDropdown.tsx
-└── filter-state.ts           # Schemas nuqs
+├── CommandPalette.tsx         # cmdk: búsqueda libre + filtrado por categoría
+└── FilterChips.tsx            # Filtros activos, con opción de quitarlos
+
+platform/
+└── PlatformSidebar.tsx        # Plataformas desde /filters/values, no un catálogo mock
+
+lib/
+├── url-state.ts               # Dueño único de los search params (ver §4.2)
+└── format.ts                  # Intl.NumberFormat fijo — toLocaleString() sin
+                                # locale explícito da resultados distintos en
+                                # servidor y cliente y React lo trata como
+                                # hydration mismatch
 ```
+
+La tabla (`LogTableClient.tsx`) virtualiza filas con `@tanstack/react-virtual`: solo se montan las visibles (~20 de 200), no todo el resultado. Sin esto, cualquier cambio de estado en la página —incluido uno que no toca la URL, como abrir el command palette— repintaba las 200 filas × 8 columnas y bloqueaba el hilo principal varios segundos.
 
 ---
 

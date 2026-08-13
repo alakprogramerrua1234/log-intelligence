@@ -6,7 +6,7 @@ Plataforma para explorar logs de seguridad y su relación con técnicas de MITRE
 
 ## Stack
 
-- **Web**: Next.js 15 + TypeScript + Tailwind + shadcn/ui + TanStack Table + nuqs
+- **Web**: Next.js 16 + TypeScript + Tailwind + shadcn/ui + TanStack Table (virtualizada)
 - **API**: FastAPI + Pydantic v2 + SQLAlchemy 2 + Alembic
 - **Datos**: PostgreSQL 16 + Meilisearch
 - **Infra local**: Docker Compose
