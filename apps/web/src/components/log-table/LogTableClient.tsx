@@ -6,7 +6,7 @@
 const USE_MOCK = false
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import {
   useReactTable,
   getCoreRowModel,
@@ -25,7 +25,7 @@ import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
 import { api, ApiError } from "@/lib/api"
-import { UNKNOWN_FILTER_CATEGORY, type FilterCategory } from "@/lib/types"
+import { UNKNOWN_FILTER_CATEGORY, type FilterCategory, type Log } from "@/lib/types"
 import { formatCount } from "@/lib/format"
 
 interface LogTableClientProps {
@@ -54,7 +54,7 @@ export function LogTableClient({ categories }: LogTableClientProps) {
 
   // ── Data ──────────────────────────────────────────────────────────────────
   // MOCK path: synchronous, no network.
-  const mockResult = USE_MOCK ? getMockLogs(filters, q) : null
+  const mockResult = useMemo(() => (USE_MOCK ? getMockLogs(filters, q) : null), [filters, q])
 
   // REAL path: swap USE_MOCK to false and this hook takes over.
   // La ordenación es server-driven: viaja a la API y vuelve paginada. Cambiarla
@@ -68,9 +68,19 @@ export function LogTableClient({ categories }: LogTableClientProps) {
       : { q, filters, view, sort_by: sortBy, sort_dir: sortDir },
   )
 
-  const pages = realQuery.data?.pages ?? []
-  const logs = USE_MOCK ? (mockResult?.items ?? []) : pages.flatMap((page) => page.items)
-  const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages[0]?.total ?? 0)
+  // `logs` tiene que conservar identidad entre renders (de ahí la memo sobre
+  // `realQuery.data`, que React Query mantiene estable por structural sharing).
+  // Con un array nuevo por render, el row model de TanStack Table se recalcula
+  // en cada render y su autoResetPageIndex encola un setState, que provoca otro
+  // render con otro array nuevo: un bucle de commits infinito pero silencioso.
+  // Al primer evento de input real, React drena ese trabajo pendiente en un
+  // flush síncrono que nunca termina y /explore se congela por completo.
+  const pages = realQuery.data?.pages
+  const logs = useMemo<Log[]>(
+    () => (USE_MOCK ? (mockResult?.items ?? []) : (pages?.flatMap((page) => page.items) ?? [])),
+    [mockResult, pages],
+  )
+  const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages?.[0]?.total ?? 0)
   // `isPending`, no `isLoading`: cubre también el caso en que React Query deja
   // el fetch en pausa. Sin esto la tabla pinta "No logs match the current
   // filters" mientras la query aún no ha resuelto, que es sencillamente falso.
