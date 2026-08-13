@@ -31,6 +31,20 @@ Documento vivo. Cualquier cambio estructural pasa primero por aquí.
 - **Meilisearch** es índice derivado, reconstruible en cualquier momento.
 - **El dato lo produce un proyecto upstream del equipo**, no esta app. Aquí se ingiere mediante un CLI que valida y carga.
 
+### 1.1 Unidades desplegables
+
+El corte no es por capa técnica (front / api / db) sino por **ciclo de vida**:
+
+| Unidad | Qué es | Por qué es una unidad propia |
+|---|---|---|
+| `web` | Next.js | Deploy y release propios (Vercel) |
+| `api` | FastAPI sirviendo HTTP | Deploy propio (Fly). La DB es una **capa interna** suya, no una unidad aparte |
+| `ingest` / `reindex` | Workers on-demand | Cadencia distinta (batch, disparado por upstream), fallos aislados del serving |
+
+`apps/api/Dockerfile` produce las tres imágenes desde una base común: comparten modelos y repositorios, y lo que las separa es el comando, el ciclo de vida y el escalado. `tests/test_layering.py` verifica que `ingest/` y `search/` no importan la app HTTP, que es lo que hace real la separación.
+
+> **La base de datos no es una tercera unidad desplegable.** El esquema y el código que lo consulta se versionan juntos: una migración de Alembic y el modelo que la usa van en el mismo PR. Lo que sí está aislado es el *acceso*: solo `repositories/` abre sesiones y ejecuta SQL, y eso se verifica en CI.
+
 ---
 
 ## 2. Modelo de datos
@@ -126,8 +140,20 @@ Catálogo dinámico. Cada categoría apunta a una **tabla** (dimensión, `techni
 
 **Cómo se usa:**
 1. El frontend pide `/filters/categories` y renderiza chips/dropdowns dinámicamente.
-2. Cuando el usuario selecciona valores, la API recibe `filter[<key>]=<name>`, resuelve `name → id` contra `source_table.value_column` y filtra `detection` por `detection_fk`.
-3. Añadir un filtro nuevo = insertar una fila aquí (apuntando a una dimensión ya existente). **Cero cambios en el frontend.**
+2. La API recibe `filter[<key>]=<value>`, valida `key` contra el catálogo habilitado y filtra `detection` por la columna del binding correspondiente. Una clave desconocida devuelve **`400 unknown_filter_category`** — nunca `200` con la tabla sin filtrar.
+3. **Los strings de esta tabla no se convierten en SQL.** Solo *seleccionan* un binding tipado del registro `apps/api/src/repositories/bindings.py` (`FILTERABLE`). Construir SQL a partir de datos de la DB sería superficie de inyección y perdería el tipado de SQLAlchemy.
+
+**Consistencia DB ↔ código.** `services/filters.py::validate_catalog` cruza ambos lados al arrancar la API: si una categoría habilitada no tiene binding, o declara una `source_table` / `value_column` / `detection_fk` distinta a la del binding, **la app no arranca**. Sin esa comprobación el mismo error se manifestaría en producción como filtros ignorados en silencio, que es invisible. `tests/test_filters_unit.py` lo verifica también contra el seed real, para detectar la deriva en CI antes que en boot.
+
+**Qué cuesta añadir o cambiar un filtro:**
+
+| Cambio | Coste |
+|---|---|
+| Reordenar, renombrar `label`, cambiar `ui_hint`, apagar/encender | `UPDATE` en la DB. Sin deploy. |
+| Categoría nueva sobre una dimensión que ya existe | Fila nueva. Sin deploy. |
+| Dimensión nueva | Migración + modelo + una línea en `FILTERABLE`. |
+
+En los tres casos: **cero cambios en el frontend.**
 
 ### Índices clave
 
@@ -180,8 +206,9 @@ GET /logs?filter[<category_key>]=<value>&filter[<category_key>]=<value>&q=<texto
 
 **Convenciones de respuesta:**
 - Listas paginadas devuelven `{ items: [...], next_cursor: "...", total: 1234 }`.
-- Cursor-based, no offset (los datasets crecen y la paginación por offset duele).
-- Errores con `{ "detail": "...", "code": "log_not_found" }`.
+- **Cursor-based, no offset.** El cursor es **opaco** (base64 de `{k, v}`): el cliente lo reenvía tal cual y nunca lo construye. Esa opacidad es lo que permite que Postgres pagine por keyset sobre `detection.id` y Meilisearch por número de página, detrás del mismo contrato. Un cursor del backend equivocado se rechaza con `400 invalid_cursor` en vez de interpretarse mal.
+- Errores con la forma de `schemas/errors.py::ErrorOut` — `{ "detail": "...", "code": "log_not_found", "keys": [] }`. El cliente ramifica sobre `code`, nunca sobre `detail`. El tipo espejo es `ApiErrorBody` en `apps/web/src/lib/types/`.
+- Todo endpoint que devuelva listas acepta `limit` acotado. Nada sin techo.
 
 ---
 
@@ -256,38 +283,55 @@ El sistema jerárquico se implementa en el endpoint `/logs` consultando la confi
 
 ---
 
-## 5. Búsqueda con Meilisearch
+## 5. Búsqueda
 
-**Índices:**
-- `detections`: documento aplanado por fila de `detection` con las dimensiones ya resueltas (joins materializados al indexar) y los campos potencialmente filtrables/searchable.
-- `techniques`: documentos por técnica.
+### 5.1 El seam: `SearchBackend`
 
-**Atributos configurables (no hardcodear):**
-- `filterableAttributes` en `detections` → se calcula a partir de `filter_category` (los `key` declarados ahí).
-- `searchableAttributes` y sus pesos → leídos de un YAML de config (`apps/api/src/search/config.yaml`) para no requerir cambios de código al añadir un campo.
+La búsqueda vive detrás de un contrato de un solo método (`apps/api/src/search/backend.py`):
 
-**Reindex:**
-- Job manual vía endpoint admin (`POST /admin/reindex`).
-- Triggered automáticamente al final de cada ingesta (`src.ingest.load`).
-- En desarrollo: re-ejecutar el comando es la forma estándar de refrescar.
+```python
+def search(q, filters, limit, cursor) -> SearchPage   # ids, total, next_cursor
+```
 
-**Documento de `detection` en Meilisearch (joins ya resueltos al indexar):**
+**Devuelve ids, no filas.** Hidratar es cosa de `DetectionRepository`. Ese seam estrecho es lo que permite dos implementaciones sin que ninguna conozca la forma de la respuesta HTTP ni los joins:
+
+| Backend | Orden | Paginación | Cuándo |
+|---|---|---|---|
+| `PostgresSearchBackend` | `detection.id` | keyset (`id > cursor`) | **default**; la app arranca sin Meilisearch |
+| `MeilisearchBackend` | relevancia | página (`hitsPerPage`) | requiere haber reindexado |
+
+Se elige con `SEARCH_BACKEND=postgres|meilisearch`. El coste de la abstracción es una query extra (ids → hidratar); a cambio, cambiar de motor no toca routers, services ni el contrato.
+
+### 5.2 Índice `detections`
+
+Documento aplanado por fila de `detection`, con los joins ya resueltos. **Se deriva del catálogo**, no se escribe a mano: el atributo con el nombre de la categoría lleva el *valor filtrable* (el que viaja en `filter[<key>]=`), y el nombre legible va en `<key>_name` solo cuando difiere.
 
 ```json
 {
   "id": 184213,
   "platform": "Windows",
   "log_source": "Sysmon",
-  "channel": "Microsoft-Windows-Sysmon/Operational",
+  "event_id": "1",
   "tactic": "execution",
-  "technique_id": "T1059",
+  "technique": "T1059",
   "technique_name": "Command and Scripting Interpreter",
-  "subtechnique_id": "T1059.001",
+  "subtechnique": "T1059.001",
   "subtechnique_name": "PowerShell"
 }
 ```
 
-> Los nombres de los atributos filtrables siguen las `key` de `filter_category`. Si se añade una dimensión nueva, se añade una fila a `filter_category` y se ajusta el indexer; el frontend no necesita saberlos por nombre.
+**Atributos (nunca hardcodeados):**
+- `filterableAttributes` → las `key` habilitadas en `filter_category`.
+- `searchableAttributes` → las mismas, **en el orden de `filter_category.order`**. En Meilisearch ese orden *es* la prioridad de ranking, así que la columna `order` hace doble función: ordena los filtros en la UI y pesa la búsqueda.
+
+> Esto sustituye al `config.yaml` de pesos que contemplaba el plan original. Una sola declaración en la DB en vez de dos fuentes que se pueden contradecir, y sin dependencia de YAML.
+
+**Reindex:**
+- `python -m src.search.reindex` (o `docker compose run --rm reindex`).
+- Automático al final de una ingesta con éxito, si `SEARCH_BACKEND=meilisearch`. Si falla, la carga ya está confirmada y el CLI lo dice explícitamente antes de salir con error — el índice es derivado y se reconstruye.
+- Idempotente: `PUT` de documentos por clave primaria.
+
+> **Sin verificar contra un Meilisearch real.** Lo que está cubierto por tests es lo nuestro: expresión de filtro, escapado de valores, cursores, forma del documento y atributos derivados. El contrato de red con Meilisearch (incluida la sensibilidad a mayúsculas de sus filtros, que en Postgres es explícitamente insensible) necesita una pasada contra el contenedor antes de poner `SEARCH_BACKEND=meilisearch` en producción.
 
 ---
 

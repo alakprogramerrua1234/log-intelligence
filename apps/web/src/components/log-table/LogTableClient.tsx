@@ -18,14 +18,14 @@ import { useQueryState, parseAsString, parseAsStringEnum } from "nuqs"
 import { ChevronUp, ChevronDown, Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useFilterParams } from "@/hooks/useFilterParams"
-import { useLogsQuery } from "@/hooks/useLogsQuery"
+import { useLogsInfiniteQuery } from "@/hooks/useLogsQuery"
 import { getMockLogs, MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
 import { FilterChips } from "@/components/filters/FilterChips"
 import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
-import { api } from "@/lib/api"
-import type { FilterCategory } from "@/lib/types"
+import { api, ApiError } from "@/lib/api"
+import { UNKNOWN_FILTER_CATEGORY, type FilterCategory } from "@/lib/types"
 
 interface LogTableClientProps {
   // Categories come from /filters/categories; fallback to mock when USE_MOCK
@@ -39,7 +39,7 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
 
   const [q] = useQueryState("q", parseAsString.withDefault(""))
   const [view] = useQueryState("view", parseAsStringEnum(["compact", "full"]).withDefault("full"))
-  const { filters } = useFilterParams()
+  const { filters, clearAllFilters } = useFilterParams()
 
   const categoriesQuery = useQuery({
     queryKey: ["filter-categories"],
@@ -58,17 +58,27 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
   const mockResult = USE_MOCK ? getMockLogs(filters, q) : null
 
   // REAL path: swap USE_MOCK to false and this hook takes over.
-  // TODO: pass cursor for next-page when implementing infinite scroll.
-  const realQuery = useLogsQuery(
+  const realQuery = useLogsInfiniteQuery(
     USE_MOCK
       ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
       : { q, filters, view },
   )
 
-  const logs = USE_MOCK ? (mockResult?.items ?? []) : (realQuery.data?.items ?? [])
-  const total = USE_MOCK ? (mockResult?.total ?? 0) : (realQuery.data?.total ?? 0)
-  const isLoading = !USE_MOCK && realQuery.isLoading
+  const pages = realQuery.data?.pages ?? []
+  const logs = USE_MOCK ? (mockResult?.items ?? []) : pages.flatMap((page) => page.items)
+  const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages[0]?.total ?? 0)
+  // `isPending`, no `isLoading`: cubre también el caso en que React Query deja
+  // el fetch en pausa. Sin esto la tabla pinta "No logs match the current
+  // filters" mientras la query aún no ha resuelto, que es sencillamente falso.
+  const isLoading = !USE_MOCK && realQuery.isPending
   const isError = !USE_MOCK && realQuery.isError
+
+  // La API rechaza categorías de filtro que no existen en vez de ignorarlas.
+  // Suele venir de una URL compartida que quedó obsoleta.
+  const unknownFilterKeys =
+    realQuery.error instanceof ApiError && realQuery.error.code === UNKNOWN_FILTER_CATEGORY
+      ? realQuery.error.keys
+      : []
 
   // ── Table ─────────────────────────────────────────────────────────────────
   const columns = view === "compact" ? compactColumns : fullColumns
@@ -138,7 +148,28 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
         </div>
       )}
 
-      {isError && (
+      {isError && unknownFilterKeys.length > 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+          <p className="text-sm text-amber-400">
+            Unknown filter {unknownFilterKeys.length === 1 ? "category" : "categories"}:{" "}
+            <span className="font-mono">{unknownFilterKeys.join(", ")}</span>
+          </p>
+          <p className="max-w-md text-xs text-zinc-500">
+            {unknownFilterKeys.length === 1 ? "That isn't a" : "Those aren't"} filterable
+            {unknownFilterKeys.length === 1 ? " category" : " categories"}. This usually
+            comes from a shared URL that is out of date.
+          </p>
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+
+      {isError && unknownFilterKeys.length === 0 && (
         <div className="flex flex-1 items-center justify-center text-sm text-red-400">
           Failed to load logs. Is the API running?
         </div>
@@ -200,12 +231,27 @@ export function LogTableClient({ categories, platformName }: LogTableClientProps
       {/* ── Footer ── */}
       <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950 px-4 py-2">
         <span className="font-mono text-xs text-zinc-600">
-          {total.toLocaleString()} log{total !== 1 ? "s" : ""}
+          {logs.length.toLocaleString()} of {total.toLocaleString()} log
+          {total !== 1 ? "s" : ""}
           {USE_MOCK ? " (mock)" : ""}
         </span>
-        <div className="flex items-center gap-1 text-xs text-zinc-700">
-          {/* TODO: cursor-based pagination controls */}
-          <span>pagination coming soon</span>
+        <div className="flex items-center gap-2 text-xs">
+          {!USE_MOCK && realQuery.hasNextPage && (
+            <button
+              type="button"
+              onClick={() => void realQuery.fetchNextPage()}
+              disabled={realQuery.isFetchingNextPage}
+              className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+            >
+              {realQuery.isFetchingNextPage && (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
+              Load more
+            </button>
+          )}
+          {!USE_MOCK && !realQuery.hasNextPage && logs.length > 0 && (
+            <span className="text-zinc-700">end of results</span>
+          )}
         </div>
       </div>
 

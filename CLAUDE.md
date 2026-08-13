@@ -103,6 +103,7 @@ log-intelligence/
 - Pydantic v2 para todo lo que cruza la red.
 - **Routers finos**: parsear input, llamar a un service, devolver schema. Nada de SQL en routers.
 - **Repositories** envuelven SQLAlchemy. Los services no importan `Session` directamente.
+- Estas dos reglas **están verificadas en CI** por `apps/api/tests/test_layering.py`: `routers/` y `services/` no pueden importar `sqlalchemy` ni usar `Session` / `get_db` / `.execute(`. La única excepción es `src/dependencies.py`, el composition root.
 - Migraciones Alembic, una por PR. Nombre descriptivo: `2026_05_09_add_log_provider_index.py`.
 - Tablas en singular, `snake_case` (dimensiones: `platform`, `log_source`, `channel`, `tactic`; jerarquía MITRE: `technique`, `subtechnique`; hechos: `detection`).
 - Errores HTTP: usar `HTTPException` con códigos correctos. Nunca devolver 200 con `{"error": ...}`.
@@ -127,10 +128,17 @@ uv run --directory apps/api alembic revision --autogenerate -m "descripcion"
 uv run --directory apps/api alembic upgrade head
 
 # Ingesta de un dataset producido por el proyecto upstream
+# (reindexa Meilisearch al terminar si SEARCH_BACKEND=meilisearch; --no-reindex lo salta)
 uv run --directory apps/api python -m src.ingest.load --source path/o/url/al/dataset
 
 # Reindexar Meilisearch
 uv run --directory apps/api python -m src.search.reindex
+
+# Contrato API -> web: exportar OpenAPI y regenerar los tipos TS.
+# Los dos van juntos y en el mismo PR; CI falla si el generado no coincide.
+uv run --directory apps/api python scripts/export_openapi.py
+pnpm --filter web generate:types
+pnpm --filter web check:types
 
 # Lint / format
 pnpm --filter web lint
@@ -142,6 +150,12 @@ uv run --directory apps/api mypy src
 # Tests
 pnpm --filter web test
 uv run --directory apps/api pytest
+
+# Los tests de ingesta necesitan Postgres de verdad (ON CONFLICT,
+# UNIQUE NULLS NOT DISTINCT). Sin TEST_DATABASE_URL se saltan.
+docker compose up -d postgres
+TEST_DATABASE_URL=postgresql+psycopg://logintel:logintel@localhost:5432/logintel \
+  uv run --directory apps/api pytest
 ```
 
 > Si añades un comando que vas a repetir, mételo aquí.
@@ -157,6 +171,10 @@ uv run --directory apps/api pytest
 5. **El dato lo produce un proyecto upstream**, no esta app. Aquí solo ingerimos, almacenamos y servimos. Si falta o está mal un dato, se corrige upstream y se reingesta.
 6. **Meilisearch indexa los logs.** Los atributos filtrables se configuran a partir de las categorías declaradas en metadata, no se hardcodean en código.
 7. **Autenticación se aplaza** hasta tener producto validado. Endpoint público con rate-limit por IP por ahora.
+8. **La búsqueda vive tras `SearchBackend`** (`apps/api/src/search/`). Postgres es el default y no requiere infraestructura extra; Meilisearch se activa con `SEARCH_BACKEND=meilisearch` tras reindexar. Ver `ARCHITECTURE.md` §5.
+9. **Los cursores de paginación son opacos.** El cliente los reenvía, nunca los construye. Es lo que permite que cada backend pagine a su manera sin romper el contrato.
+10. **Los tipos TS del contrato se generan**, no se escriben. `apps/web/src/lib/types/api.generated.ts` sale del OpenAPI; `index.ts` solo re-exporta y declara lo que aún no existe en la API.
+11. **Las unidades desplegables se cortan por ciclo de vida** (web / api / workers), no por capa técnica. La DB es una capa interna de la api. Ver `ARCHITECTURE.md` §1.1.
 
 ---
 
@@ -179,7 +197,7 @@ uv run --directory apps/api pytest
 2. Si tocas la API: revisa los routers existentes en `apps/api/src/routers/`.
 3. Si tocas la tabla: revisa `apps/web/src/components/log-table/` y los hooks en `src/hooks/`.
 4. Para componentes nuevos de UI: `pnpm dlx shadcn@latest add <component>` **antes** de escribir desde cero.
-5. Si la tarea afecta a contratos API ↔ web: actualiza Pydantic schema + tipo TS en el mismo PR.
+5. Si la tarea afecta a contratos API ↔ web: cambia el schema de Pydantic y **regenera** — `python scripts/export_openapi.py` + `pnpm --filter web generate:types` — en el mismo PR. Los tipos TS ya no se escriben a mano; CI falla si el generado no coincide.
 
 ---
 

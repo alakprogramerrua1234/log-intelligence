@@ -34,6 +34,47 @@ services:
       timeout: 5s
       retries: 10
 
+  # Los servicios de abajo van tras un `profile`, así que `docker compose up -d`
+  # sigue levantando solo postgres + meilisearch, que es el flujo de desarrollo.
+  # Están aquí para que el despliegue por separado sea reproducible en local.
+
+  # docker compose --profile full up -d
+  api:
+    profiles: ["full"]
+    build:
+      context: ./apps/api
+      target: api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://logintel:logintel@postgres:5432/logintel
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: dev_master_key_change_me
+      SEARCH_BACKEND: postgres
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+
+  # Se ejecuta a demanda, no es long-running:
+  # docker compose run --rm ingest --source /data/sample.csv
+  ingest:
+    profiles: ["tools"]
+    build:
+      context: ./apps/api
+      target: ingest
+    environment:
+      DATABASE_URL: postgresql+psycopg://logintel:logintel@postgres:5432/logintel
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: dev_master_key_change_me
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   meili_data:

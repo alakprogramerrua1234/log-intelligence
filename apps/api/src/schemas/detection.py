@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -19,12 +21,16 @@ class DetectionOut(BaseModel):
     log_source_id: str
     log_source_name: str
     event_id: str | None
-    provider: None = None
     name: str
-    description: None = None
-    sample_fields: None = None
-    relevance: int = 0
     techniques: list[TechniqueRef]
+
+    # Campos que el dataset upstream todavía no trae. Se declaran opcionales, no
+    # `None` fijo: así el tipo generado para el frontend ya es el definitivo y
+    # rellenarlos más adelante no rompe el contrato.
+    provider: str | None = None
+    description: str | None = None
+    sample_fields: dict[str, Any] | None = None
+    relevance: int = 0
 
 
 class PaginatedDetections(BaseModel):
