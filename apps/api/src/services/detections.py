@@ -36,8 +36,8 @@ class DetectionService:
         sort_spec = parse_sort(sort, sort_dir)
 
         # El backend decide qué casa y en qué orden; el repositorio solo hidrata.
-        # Ese reparto es lo que permite cambiar Postgres por Meilisearch sin
-        # tocar ni el router ni la forma de la respuesta.
+        # Ese reparto es lo que permite cambiar de motor de búsqueda sin tocar
+        # ni el router ni la forma de la respuesta.
         page = self._search.search(q, filters, limit, cursor, sort_spec)
         records = self._detections.get_by_ids(page.ids)
 

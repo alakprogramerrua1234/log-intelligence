@@ -1,9 +1,13 @@
 """Contrato de búsqueda: qué detecciones casan, en qué orden, y cómo seguir.
 
 El seam es deliberadamente estrecho — el backend responde con **ids**, no con
-filas. Hidratar es cosa del repositorio. Así Meilisearch puede aportar ranking y
-Postgres orden estable sin que ninguno de los dos necesite conocer la forma de
-la respuesta HTTP ni los joins de dimensiones.
+filas. Hidratar es cosa del repositorio, que es quien conoce los joins de
+dimensiones; el backend solo decide qué casa y en qué orden.
+
+Hoy la única implementación es `PostgresSearchBackend`. El contrato se mantiene
+separado porque es donde vive la paginación por cursor opaco, y porque un motor
+de búsqueda dedicado —si el volumen alguna vez lo justifica— entraría por aquí
+sin tocar routers, services ni la forma de la respuesta.
 """
 
 from collections.abc import Mapping, Sequence
@@ -35,7 +39,7 @@ class SearchBackend(Protocol):
     ) -> SearchPage:
         """`q` vacío significa "sin búsqueda libre": solo filtros.
 
-        `sort` a `None` deja que el backend use su orden natural: `id` en
-        Postgres, relevancia en Meilisearch.
+        `sort` a `None` deja que el backend use su orden natural — `id` en
+        Postgres.
         """
         ...

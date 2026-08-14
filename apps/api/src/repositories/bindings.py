@@ -40,10 +40,6 @@ class FilterBinding:
     display_column: InstrumentedAttribute[Any]
     #: FK en `detection` por la que se filtra.
     detection_fk: InstrumentedAttribute[Any]
-    #: Campo de `DetectionRecord` del que sale el valor al indexar.
-    record_value_field: str
-    #: Campo de `DetectionRecord` del que sale el texto legible al indexar.
-    record_display_field: str
 
     @property
     def source_table(self) -> str:
@@ -62,28 +58,23 @@ FILTERABLE: Mapping[str, FilterBinding] = {
     binding.key: binding
     for binding in (
         FilterBinding(
-            "platform", Platform, Platform.name, Platform.name, Detection.platform_id,
-            "platform", "platform",
+            "platform", Platform, Platform.name, Platform.name, Detection.platform_id
         ),
         FilterBinding(
-            "log_source", LogSource, LogSource.name, LogSource.name, Detection.log_source_id,
-            "log_source_name", "log_source_name",
+            "log_source", LogSource, LogSource.name, LogSource.name, Detection.log_source_id
         ),
         FilterBinding(
-            "event_id", EventId, EventId.name, EventId.name, Detection.event_id_id,
-            "event_id", "event_id",
+            "event_id", EventId, EventId.name, EventId.name, Detection.event_id_id
         ),
         FilterBinding(
-            "tactic", Tactic, Tactic.name, Tactic.name, Detection.tactic_id,
-            "tactic", "tactic",
+            "tactic", Tactic, Tactic.name, Tactic.name, Detection.tactic_id
         ),
         FilterBinding(
-            "technique", Technique, Technique.id, Technique.name, Detection.technique_id,
-            "technique_id", "technique_name",
+            "technique", Technique, Technique.id, Technique.name, Detection.technique_id
         ),
         FilterBinding(
             "subtechnique", Subtechnique, Subtechnique.id, Subtechnique.name,
-            Detection.subtechnique_id, "subtechnique_id", "subtechnique_name",
+            Detection.subtechnique_id,
         ),
     )
 }
@@ -112,17 +103,15 @@ class SortBinding:
 
     key: str
     column: InstrumentedAttribute[Any]
-    #: Atributo equivalente en el documento de Meilisearch.
-    document_field: str
 
 
 SORTABLE: Mapping[str, SortBinding] = {
     binding.key: binding
     for binding in (
-        SortBinding("log_source_name", LogSource.name, "log_source"),
-        SortBinding("event_id", EventId.name, "event_id"),
-        SortBinding("tactic", Tactic.name, "tactic"),
-        SortBinding("technique_id", Technique.id, "technique"),
+        SortBinding("log_source_name", LogSource.name),
+        SortBinding("event_id", EventId.name),
+        SortBinding("tactic", Tactic.name),
+        SortBinding("technique_id", Technique.id),
     )
 }
 

@@ -1,4 +1,4 @@
-"""Backend de búsqueda sobre Postgres. Es el camino por defecto.
+"""Backend de búsqueda sobre Postgres.
 
 Paginación por keyset: el coste no crece con la profundidad de la página, a
 diferencia de `OFFSET`. Sin ordenación explícita el keyset va sobre `id`; con
@@ -6,6 +6,11 @@ ordenación, sobre `(columna, id)` — ver `DetectionRepository.matching`.
 
 No ejecuta SQL: compone `DetectionRepository`. La frontera de persistencia sigue
 siendo `repositories/`.
+
+`q` se resuelve con `LIKE '%término%'` sobre las columnas filtrables. El comodín
+inicial impide usar índice, así que es un escaneo — irrelevante con el volumen
+actual (miles de filas). Si el dataset crece un orden de magnitud, el primer
+paso es un índice GIN con `pg_trgm`, que además daría tolerancia a erratas.
 """
 
 from collections.abc import Mapping, Sequence

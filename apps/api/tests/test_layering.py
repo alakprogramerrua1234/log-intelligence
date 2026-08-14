@@ -24,7 +24,10 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 CONSTRAINED_PACKAGES = ("routers", "services", "search")
 
 #: Composition roots / entrypoints: atan capas, así que pueden ver la Session.
-EXEMPT = {"search/reindex.py"}
+#: Vacío hoy — `src/dependencies.py` es el único composition root y no está en
+#: `CONSTRAINED_PACKAGES`. Se conserva el mecanismo porque la exención vuelve a
+#: hacer falta en cuanto un paquete restringido gane un entrypoint propio.
+EXEMPT: set[str] = set()
 
 #: Paquetes que deben poder desplegarse sin la app HTTP.
 STANDALONE_PACKAGES = ("ingest", "search")

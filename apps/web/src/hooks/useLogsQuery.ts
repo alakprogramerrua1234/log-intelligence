@@ -13,8 +13,8 @@ export function useLogsQuery(query: LogsQuery) {
 
 /**
  * Paginación por cursor. El cursor es opaco: se reenvía tal cual llegó en
- * `next_cursor` y nunca se construye en cliente — el backend puede cambiar de
- * keyset (Postgres) a página (Meilisearch) sin tocar esto.
+ * `next_cursor` y nunca se construye en cliente, así que el backend puede
+ * cambiar de estrategia de paginación sin tocar esto.
  */
 export function useLogsInfiniteQuery(query: LogsQuery) {
   return useInfiniteQuery({

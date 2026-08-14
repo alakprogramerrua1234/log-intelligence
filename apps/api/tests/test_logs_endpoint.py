@@ -157,9 +157,9 @@ def test_tampered_cursor_is_rejected(client: TestClient) -> None:
     assert response.json()["code"] == "invalid_cursor"
 
 
-def test_cursor_from_another_backend_is_rejected(client: TestClient) -> None:
-    """El backend por defecto es Postgres; un cursor de Meilisearch no vale."""
-    response = client.get(URL, params=[("cursor", encode_cursor("page", page=2))])
+def test_cursor_of_an_unknown_kind_is_rejected(client: TestClient) -> None:
+    """Un cursor que no salió de este listado se rechaza, no se reinterpreta."""
+    response = client.get(URL, params=[("cursor", encode_cursor("otro-listado", page=2))])
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_cursor"
 

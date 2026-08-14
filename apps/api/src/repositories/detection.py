@@ -1,6 +1,6 @@
 """Acceso a la tabla de hechos `detection`. Único sitio que ejecuta esta query."""
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -101,26 +101,14 @@ class DetectionRepository:
     def get_by_ids(self, ids: Sequence[int]) -> list[DetectionRecord]:
         """Hidrata ids preservando el orden recibido.
 
-        El orden lo decide el backend de búsqueda (relevancia en Meilisearch,
-        `id` en Postgres), así que no se puede delegar en un ORDER BY de SQL.
+        El orden lo decide el backend de búsqueda, no esta query: por eso se
+        reordena en Python en vez de delegar en un `ORDER BY`.
         """
         if not ids:
             return []
         rows = self._db.execute(self._hydrate().where(Detection.id.in_(ids))).all()
         by_id = {row.id: _to_record(row) for row in rows}
         return [by_id[detection_id] for detection_id in ids if detection_id in by_id]
-
-    def iter_records(self, batch_size: int = 1000) -> Iterator[DetectionRecord]:
-        """Todas las detecciones, en streaming. Lo usa el indexador.
-
-        Streaming y no `.all()`: el dataset crece y reindexar no debe cargarlo
-        entero en memoria.
-        """
-        result = self._db.execute(
-            self._hydrate().order_by(Detection.id).execution_options(yield_per=batch_size)
-        )
-        for row in result:
-            yield _to_record(row)
 
     # ── construcción de queries ──────────────────────────────────────────────
 

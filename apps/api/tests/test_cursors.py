@@ -44,10 +44,15 @@ def test_encoding_is_deterministic() -> None:
 # ── el `kind` protege de mezclar listados ─────────────────────────────────────
 
 
-def test_rejects_cursor_from_another_backend() -> None:
-    """Un cursor de Postgres no vale tras cambiar a Meilisearch, y viceversa."""
+def test_rejects_cursor_of_another_kind() -> None:
+    """Un cursor solo vale para el listado que lo emitió.
+
+    Hoy el único `kind` sin ordenación es `id`, pero la comprobación es lo que
+    permitirá meter otra estrategia de paginación sin que los cursores viejos se
+    interpreten mal.
+    """
     with pytest.raises(InvalidCursorError):
-        decode_cursor(encode_cursor("id", id=10), "page")
+        decode_cursor(encode_cursor("id", id=10), "otro-listado")
 
 
 def test_rejects_cursor_from_a_different_sort() -> None:

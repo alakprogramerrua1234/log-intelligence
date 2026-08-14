@@ -20,7 +20,6 @@ from sqlalchemy import Table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from src.config import settings
 from src.database import SessionLocal
 from src.ingest.schemas import DetectionRow
 from src.models import (
@@ -33,7 +32,6 @@ from src.models import (
     Tactic,
     Technique,
 )
-from src.search.reindex import reindex_from_settings
 
 # ── filter_category seed ──────────────────────────────────────────────────────
 FILTER_CATEGORIES: list[dict[str, Any]] = [
@@ -290,11 +288,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Load detections CSV into the database.")
     parser.add_argument("--source", required=True, help="Path to the CSV file")
     parser.add_argument("--dry-run", action="store_true", help="Validate without committing")
-    parser.add_argument(
-        "--no-reindex",
-        action="store_true",
-        help="Skip the Meilisearch reindex that normally follows a successful load",
-    )
     args = parser.parse_args()
 
     source = Path(args.source)
@@ -305,24 +298,6 @@ def main() -> None:
     print(f"Loading {source} {'(dry-run)' if args.dry_run else ''}...")
     report = load(source, dry_run=args.dry_run)
     _print_report(report, args.dry_run)
-
-    if args.dry_run or args.no_reindex:
-        return
-    if settings.search_backend != "meilisearch":
-        return
-
-    # El índice es derivado: la carga ya está confirmada. Si el reindex falla,
-    # los datos están bien pero la búsqueda queda obsoleta — hay que decirlo y
-    # salir en error, no tragárselo.
-    try:
-        reindex_from_settings()
-    except Exception as exc:  # noqa: BLE001 - se reporta y se propaga como exit code
-        print(
-            f"\nData loaded, but the Meilisearch reindex failed: {exc}\n"
-            f"Re-run: python -m src.search.reindex",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
 
 if __name__ == "__main__":

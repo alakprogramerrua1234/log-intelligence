@@ -1,11 +1,11 @@
 """Tests puros del catálogo de filtros: sin DB, sin FastAPI."""
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 
 import pytest
 
 from src.ingest.load import FILTER_CATEGORIES
-from src.repositories import FILTERABLE, DetectionRecord
+from src.repositories import FILTERABLE
 from src.services.filters import (
     FilterCatalogError,
     UnknownFilterCategoryError,
@@ -129,18 +129,6 @@ def test_validate_catalog_rejects_mismatched_binding(
 ) -> None:
     with pytest.raises(FilterCatalogError, match=expected):
         validate_catalog([_category("platform", **{field: bad_value})])
-
-
-def test_bindings_reference_real_detection_record_fields() -> None:
-    """`record_value_field` / `record_display_field` alimentan el indexador.
-
-    Si un binding apunta a un campo que no existe, el fallo saldría al reindexar
-    (fuera de la request, fácil de no ver). Aquí sale en CI.
-    """
-    available = {f.name for f in fields(DetectionRecord)}
-    for key, binding in FILTERABLE.items():
-        assert binding.record_value_field in available, key
-        assert binding.record_display_field in available, key
 
 
 def test_every_seeded_category_has_a_binding() -> None:

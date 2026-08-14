@@ -1,9 +1,8 @@
 """Cursores opacos para paginación.
 
-Son opacos a propósito: el cliente no puede depender de su contenido, así que
-cada backend elige su estrategia sin romper el contrato. Postgres pagina por
-keyset; Meilisearch por página, porque su orden es por relevancia y no hay clave
-estable sobre la que hacer keyset.
+Son opacos a propósito: el cliente no puede depender de su contenido, así que el
+backend puede cambiar de estrategia sin romper el contrato. Postgres pagina por
+keyset sobre `id`, o sobre `(columna, id)` cuando hay ordenación.
 
 El `kind` identifica **de qué listado salió el cursor**. Si cambias la
 ordenación, el `kind` cambia y el cursor viejo se rechaza en vez de producir una

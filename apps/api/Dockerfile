@@ -1,4 +1,4 @@
-# Una imagen, tres entrypoints. La API y la ingesta comparten modelos y
+# Una imagen, dos entrypoints. La API y la ingesta comparten modelos y
 # repositorios, así que compartir imagen evita duplicar la capa de datos; lo que
 # las separa es el comando, el ciclo de vida y el escalado, no el código.
 #
@@ -38,8 +38,3 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
 FROM base AS ingest
 ENTRYPOINT ["python", "-m", "src.ingest.load"]
 CMD ["--help"]
-
-
-# ── Reindexado de Meilisearch ────────────────────────────────────────────────
-FROM base AS reindex
-ENTRYPOINT ["python", "-m", "src.search.reindex"]

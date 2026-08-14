@@ -46,7 +46,7 @@ def test_unknown_sort_key_is_rejected_not_ignored() -> None:
 def test_every_sortable_key_has_a_binding() -> None:
     for key, binding in SORTABLE.items():
         assert binding.key == key
-        assert binding.document_field
+        assert binding.column is not None
 
 
 # ── endpoint ──────────────────────────────────────────────────────────────────
