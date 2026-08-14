@@ -6,8 +6,12 @@ Postgres**: contra SQLite no probarían lo que importa (idempotencia y
 corriendo sin infraestructura.
 
     docker compose up -d postgres
-    TEST_DATABASE_URL=postgresql+psycopg://logintel:logintel@localhost:5432/logintel \
-        uv run --directory apps/api pytest tests/test_ingest.py
+    docker exec logintel-postgres createdb -U logintel logintel_test   # una vez
+    TEST_DATABASE_URL=postgresql+psycopg://logintel:logintel@localhost:5432/logintel_test \
+        uv run --directory apps/api pytest
+
+**La base tiene que ser desechable**: el fixture `engine` hace `drop_all()`.
+Ver `_require_disposable_database`.
 """
 
 import os
@@ -16,6 +20,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.ingest.load import load
@@ -27,6 +32,30 @@ pytestmark = pytest.mark.skipif(
     not TEST_DATABASE_URL,
     reason="define TEST_DATABASE_URL (Postgres) para ejercitar la ingesta",
 )
+
+
+def _require_disposable_database(url: str) -> None:
+    """Aborta si `TEST_DATABASE_URL` no apunta a una base claramente de test.
+
+    El fixture `engine` hace `drop_all()` al entrar y al salir. Apuntado a la
+    base de desarrollo se lleva por delante el dataset ingerido, y el borrado es
+    difícil de notar: `alembic_version` no está en `Base.metadata`, así que
+    sobrevive, y un `alembic upgrade head` posterior se cree al día y no
+    reconstruye nada.
+
+    Exigir "test" en el nombre convierte ese accidente en un error ruidoso.
+    """
+    name = (make_url(url).database or "").lower()
+    if "test" not in name:
+        raise pytest.UsageError(
+            f"TEST_DATABASE_URL apunta a la base '{name}', que no parece de test. "
+            "Estos tests ejecutan drop_all() y borrarían sus datos. "
+            "Usa una base cuyo nombre contenga 'test' (p. ej. logintel_test)."
+        )
+
+
+if TEST_DATABASE_URL:
+    _require_disposable_database(TEST_DATABASE_URL)
 
 HEADER = (
     "platform,log_source,event_id,tactic,"
