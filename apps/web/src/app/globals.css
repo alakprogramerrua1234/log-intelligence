@@ -88,3 +88,22 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/*
+ * Cambiar de tema debe ser instantáneo.
+ *
+ * Los elementos con `transition-colors` (filas de la tabla, botones de celda,
+ * chips) la llevan para el hover. Al alternar `.dark` sus colores también
+ * entran en esa transición: interpolan 150 ms mientras el resto de la página
+ * salta al instante, y el tema se ve entrar a trozos.
+ *
+ * `ThemeToggle` pone esta clase, cambia el tema y la quita en el mismo frame,
+ * así que solo desactiva las transiciones durante el propio cambio; el hover
+ * sigue animando después.
+ */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}

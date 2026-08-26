@@ -21,7 +21,19 @@ function isDark(): boolean {
 
 function toggleTheme(): void {
   const next = !isDark()
-  document.documentElement.classList.toggle("dark", next)
+  const root = document.documentElement
+
+  // Las transiciones se apagan durante el cambio (ver `.theme-switching` en
+  // globals.css). Sin esto, los elementos con `transition-colors` interpolan
+  // sus colores 150 ms mientras el resto de la página salta, y el tema entra a
+  // trozos. Leer el layout entre medias fuerza el recálculo con las
+  // transiciones ya apagadas, así que al reactivarlas los colores nuevos ya
+  // están aplicados y no se dispara ninguna animación.
+  root.classList.add("theme-switching")
+  root.classList.toggle("dark", next)
+  root.getBoundingClientRect()
+  root.classList.remove("theme-switching")
+
   try {
     localStorage.setItem("theme", next ? "dark" : "light")
   } catch {
