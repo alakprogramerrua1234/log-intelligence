@@ -14,7 +14,7 @@ import {
   flexRender,
   type SortingState,
 } from "@tanstack/react-table"
-import { Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useFilterParams } from "@/hooks/useFilterParams"
@@ -24,6 +24,11 @@ import { FilterChips } from "@/components/filters/FilterChips"
 import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
 import { fullColumns, compactColumns } from "@/components/log-table/columns"
+import {
+  DEFAULT_PAGE_SIZE,
+  PageSizeSelect,
+  type PageSize,
+} from "@/components/log-table/PageSizeSelect"
 import { api, ApiError } from "@/lib/api"
 import { UNKNOWN_FILTER_CATEGORY, type FilterCategory, type Log } from "@/lib/types"
 import { formatCount } from "@/lib/format"
@@ -37,6 +42,7 @@ export function LogTableClient({ categories }: LogTableClientProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteCategory, setPaletteCategory] = useState<import("@/lib/types").FilterCategory | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE)
 
   const { filters, setFilter, clearAllFilters, q, view } = useFilterParams()
 
@@ -65,20 +71,37 @@ export function LogTableClient({ categories }: LogTableClientProps) {
   const realQuery = useLogsInfiniteQuery(
     USE_MOCK
       ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
-      : { q, filters, view, sort_by: sortBy, sort_dir: sortDir },
+      : { q, filters, view, sort_by: sortBy, sort_dir: sortDir, limit: pageSize },
   )
 
+  // Posición dentro de las páginas ya traídas.
+  //
+  // Cambiar filtros, búsqueda, orden o tamaño de página arranca una query
+  // distinta, y entonces la posición tiene que volver a la primera página. Se
+  // deriva en render comparando la identidad de la query en vez de hacerlo en
+  // un efecto: así no existe un frame intermedio pintando la página vieja
+  // contra los datos nuevos.
+  const queryId = JSON.stringify([q, filters, view, sortBy, sortDir, pageSize])
+  const [cursor, setCursor] = useState({ id: queryId, index: 0 })
+  const requestedIndex = cursor.id === queryId ? cursor.index : 0
+
+  const pages = realQuery.data?.pages
+  const pageCount = pages?.length ?? 0
+  // `keepPreviousData` puede dejar menos páginas de las que había mientras
+  // carga la query nueva; sin acotar, el índice apuntaría fuera del array.
+  const pageIndex = Math.min(requestedIndex, Math.max(0, pageCount - 1))
+  const currentPage = pages?.[pageIndex]
+
   // `logs` tiene que conservar identidad entre renders (de ahí la memo sobre
-  // `realQuery.data`, que React Query mantiene estable por structural sharing).
+  // los datos de React Query, que mantiene estable por structural sharing).
   // Con un array nuevo por render, el row model de TanStack Table se recalcula
   // en cada render y su autoResetPageIndex encola un setState, que provoca otro
   // render con otro array nuevo: un bucle de commits infinito pero silencioso.
   // Al primer evento de input real, React drena ese trabajo pendiente en un
   // flush síncrono que nunca termina y /explore se congela por completo.
-  const pages = realQuery.data?.pages
   const logs = useMemo<Log[]>(
-    () => (USE_MOCK ? (mockResult?.items ?? []) : (pages?.flatMap((page) => page.items) ?? [])),
-    [mockResult, pages],
+    () => (USE_MOCK ? (mockResult?.items ?? []) : (currentPage?.items ?? [])),
+    [mockResult, currentPage],
   )
   const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages?.[0]?.total ?? 0)
   // `isPending`, no `isLoading`: cubre también el caso en que React Query deja
@@ -142,6 +165,35 @@ export function LogTableClient({ categories }: LogTableClientProps) {
     virtualRows.length > 0
       ? virtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
       : 0
+
+  // ── Navegación entre páginas ──────────────────────────────────────────────
+  // El backend pagina por cursor, que es de ida. Pero React Query guarda las
+  // páginas ya traídas en orden, así que "anterior" es moverse por esa caché y
+  // no cuesta una petición; solo "siguiente" puede necesitar traer una página
+  // nueva. Eso da prev/next real sin tocar el contrato de la API.
+  const hasPrev = pageIndex > 0
+  const hasNext = pageIndex + 1 < pageCount || !!realQuery.hasNextPage
+
+  function goToPage(index: number): void {
+    setCursor({ id: queryId, index })
+    scrollRef.current?.scrollTo({ top: 0 })
+  }
+
+  async function goNext(): Promise<void> {
+    if (pageIndex + 1 < pageCount) {
+      goToPage(pageIndex + 1)
+      return
+    }
+    if (!realQuery.hasNextPage) return
+    // Todavía no está en caché: se pide, y solo se avanza si de verdad llegó.
+    const result = await realQuery.fetchNextPage()
+    if ((result.data?.pages.length ?? 0) > pageIndex + 1) goToPage(pageIndex + 1)
+  }
+
+  // Las páginas se piden todas con el mismo `limit`, así que la posición
+  // absoluta de la primera fila es calculable sin contar las anteriores.
+  const rangeFrom = logs.length > 0 ? pageIndex * pageSize + 1 : 0
+  const rangeTo = pageIndex * pageSize + logs.length
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -290,29 +342,45 @@ export function LogTableClient({ categories }: LogTableClientProps) {
       )}
 
       {/* ── Footer ── */}
-      <div className="flex items-center justify-between border-t border-line bg-background px-4 py-2">
-        <span className="font-mono text-xs text-dim">
-          {formatCount(logs.length)} of {formatCount(total)} log
-          {total !== 1 ? "s" : ""}
-          {USE_MOCK ? " (mock)" : ""}
-        </span>
-        <div className="flex items-center gap-2 text-xs">
-          {!USE_MOCK && realQuery.hasNextPage && (
-            <button
-              type="button"
-              onClick={() => void realQuery.fetchNextPage()}
-              disabled={realQuery.isFetchingNextPage}
-              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-1 px-2.5 py-1 text-fg-2 transition-colors hover:border-faint hover:text-foreground disabled:opacity-50"
-            >
-              {realQuery.isFetchingNextPage && (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              )}
-              Load more
-            </button>
-          )}
-          {!USE_MOCK && !realQuery.hasNextPage && logs.length > 0 && (
-            <span className="text-faint">end of results</span>
-          )}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-background px-4 py-2 text-xs">
+        <div className="flex items-center gap-3">
+          <PageSizeSelect value={pageSize} onChange={setPageSize} />
+          <span className="font-mono text-dim">
+            {rangeFrom === 0
+              ? "no results"
+              : `${formatCount(rangeFrom)}–${formatCount(rangeTo)} of ${formatCount(total)}`}
+            {USE_MOCK ? " (mock)" : ""}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => goToPage(pageIndex - 1)}
+            disabled={!hasPrev}
+            aria-label="Previous page"
+            className="flex items-center gap-1 rounded-md border border-line bg-surface-1 px-2 py-1 text-fg-2 transition-colors hover:border-faint hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="h-3 w-3" />
+            <span className="hidden sm:inline">Prev</span>
+          </button>
+
+          <span className="px-2 font-mono text-dim">page {formatCount(pageIndex + 1)}</span>
+
+          <button
+            type="button"
+            onClick={() => void goNext()}
+            disabled={!hasNext || realQuery.isFetchingNextPage}
+            aria-label="Next page"
+            className="flex items-center gap-1 rounded-md border border-line bg-surface-1 px-2 py-1 text-fg-2 transition-colors hover:border-faint hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {realQuery.isFetchingNextPage ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <span className="hidden sm:inline">Next</span>
+            )}
+            <ChevronRight className="h-3 w-3" />
+          </button>
         </div>
       </div>
 
