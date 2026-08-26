@@ -84,6 +84,19 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Alto TOTAL de la cabecera: el `h-12` (3rem) de su contenido más el borde
+ * inferior de 1px, que queda fuera de esa caja. Si cambia el alto en
+ * `SiteHeader`, hay que actualizarlo aquí.
+ *
+ * Lo consume /explore para acotar su región al viewport restante. Sin el 1px
+ * del borde, la página desbordaba justo esa cantidad y el pie con la
+ * paginación caía fuera de pantalla.
+ */
+:root {
+  --header-height: calc(3rem + 1px);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

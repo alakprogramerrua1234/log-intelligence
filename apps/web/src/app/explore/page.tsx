@@ -18,7 +18,18 @@ import { ExploreHeader } from "@/components/log-table/ExploreHeader"
 
 export default function ExplorePage() {
   return (
-    <main className="flex flex-1 flex-col min-h-0 bg-background">
+    // Altura definida, no `flex-1`.
+    //
+    // `body` es `min-h-full`: una altura MÍNIMA, no una definida. Con eso la
+    // cadena `flex-1 min-h-0` no tiene contra qué acotarse, así que cada
+    // contenedor crecía hasta su contenido y quien scrolleaba era el documento
+    // entero: la barra lateral se iba hacia arriba, el pie con la paginación
+    // quedaba fuera de pantalla y el `thead` sticky no pegaba a nada.
+    //
+    // Fijando el alto al viewport menos la cabecera la región pasa a estar
+    // acotada y el único que scrollea es el cuerpo de la tabla. Se hace aquí y
+    // no en `body` porque la landing y /exploit sí deben scrollear normal.
+    <main className="flex h-[calc(100dvh-var(--header-height))] flex-col bg-background">
       <div className="mx-auto flex w-full max-w-7xl flex-1 min-h-0">
         <Suspense
           fallback={<div className="hidden w-52 shrink-0 border-r border-line md:block" />}

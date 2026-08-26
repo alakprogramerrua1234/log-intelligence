@@ -34,7 +34,7 @@ export function PlatformSidebar() {
   const facetCategories = (categories.data ?? []).filter((c) => c.key !== "platform")
 
   return (
-    <aside className="hidden w-52 shrink-0 flex-col gap-6 border-r border-line px-3 py-5 md:flex">
+    <aside className="hidden w-52 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line px-3 py-5 md:flex">
       <div>
         <h4 className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-faint">
           Platform
