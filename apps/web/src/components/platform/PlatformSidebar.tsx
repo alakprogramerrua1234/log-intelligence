@@ -34,7 +34,7 @@ export function PlatformSidebar() {
   const facetCategories = (categories.data ?? []).filter((c) => c.key !== "platform")
 
   return (
-    <aside className="hidden w-52 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line px-3 py-5 md:flex">
+    <aside className="hidden w-40 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line px-2 py-5 md:flex">
       <div>
         <h4 className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.14em] text-faint">
           Platform
@@ -48,6 +48,7 @@ export function PlatformSidebar() {
                   type="button"
                   onClick={() => setFilter("platform", isActive ? [] : [platform])}
                   aria-pressed={isActive}
+                  title={platform}
                   className={`flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
                     isActive
                       ? "bg-accent-weak font-semibold text-foreground"
