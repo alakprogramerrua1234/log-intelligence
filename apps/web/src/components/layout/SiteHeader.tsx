@@ -4,7 +4,10 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle"
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-background/90 backdrop-blur-sm">
-      <div className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4">
+      <div
+        data-header-inner
+        className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4"
+      >
         <Link href="/" className="flex items-center gap-1.5 shrink-0">
           <span className="text-sm font-bold tracking-tight text-foreground">
             Log <span className="text-accent">Intelligence</span>

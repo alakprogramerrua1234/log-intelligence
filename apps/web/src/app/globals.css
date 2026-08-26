@@ -97,6 +97,18 @@
   --header-height: calc(3rem + 1px);
 }
 
+/*
+ * La cabecera se alinea con el ancho de la página que tiene debajo.
+ *
+ * Por defecto va topada a `max-w-7xl` como el contenido. En las vistas a ancho
+ * completo (`data-layout="full"`, hoy solo /explore) ese tope dejaría el logo
+ * flotando a cientos de píxeles del borde mientras la barra lateral arranca
+ * pegada a él. Se quita el tope solo ahí.
+ */
+body:has([data-layout="full"]) [data-header-inner] {
+  max-width: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

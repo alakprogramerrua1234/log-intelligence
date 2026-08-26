@@ -29,8 +29,16 @@ export default function ExplorePage() {
     // Fijando el alto al viewport menos la cabecera la región pasa a estar
     // acotada y el único que scrollea es el cuerpo de la tabla. Se hace aquí y
     // no en `body` porque la landing y /exploit sí deben scrollear normal.
-    <main className="flex h-[calc(100dvh-var(--header-height))] flex-col bg-background">
-      <div className="mx-auto flex w-full max-w-7xl flex-1 min-h-0">
+    <main
+      data-layout="full"
+      className="flex h-[calc(100dvh-var(--header-height))] flex-col bg-background"
+    >
+      {/* Sin `mx-auto max-w-7xl`: topar a 1.280 px y centrar dejaba cientos de
+          píxeles muertos a cada lado en pantallas anchas mientras las columnas
+          de la tabla se comprimían. Esta vista es una tabla densa, así que usa
+          el ancho real de la ventana. La landing y /exploit sí siguen topadas,
+          que son de lectura. */}
+      <div className="flex w-full flex-1 min-h-0">
         <Suspense
           fallback={<div className="hidden w-52 shrink-0 border-r border-line md:block" />}
         >
