@@ -101,6 +101,36 @@ uv run --directory apps/api uvicorn src.main:app --reload --port 8001      # htt
 | `uv run --directory apps/api ruff check . && ruff format .` | Lint + format |
 | `uv run --directory apps/api python -m src.ingest.load --source <src>` | Carga un dataset upstream |
 
+## Demo estática (GitHub Pages)
+
+El frontend se publica **sin backend** como MVP enseñable. Con
+`NEXT_PUBLIC_USE_MOCK=true`, `apps/web/src/lib/api.ts` resuelve desde
+`apps/web/src/lib/mock-data.ts` en lugar de llamar a FastAPI, y Next genera un
+sitio completamente estático. Es un escaparate de UI: **no es el dataset real**,
+sino una muestra fija de ocho logs de Windows, y tanto la landing como la tabla
+lo avisan con una banda "Sample data". Los conteos que no cubre la muestra se
+pintan como "—", nunca como un número inventado.
+
+El workflow [`.github/workflows/deploy-demo.yml`](./.github/workflows/deploy-demo.yml)
+lo construye y despliega en cada push a la rama **`demo`** — `development` y
+`main` no participan en el despliegue. Para activarlo, una sola vez:
+
+1. Settings → Pages → Source: **GitHub Actions**.
+2. Settings → Environments → `github-pages` → *Deployment branches*: añadir `demo`
+   (por defecto GitHub solo permite desplegar desde la rama por defecto).
+
+Queda en `https://<usuario>.github.io/<repo>/`.
+
+Reproducir el build de la demo en local:
+
+```bash
+NEXT_OUTPUT_EXPORT=true NEXT_PUBLIC_USE_MOCK=true pnpm --filter web build
+npx serve apps/web/out
+```
+
+`NEXT_BASE_PATH` solo hace falta cuando el sitio cuelga de una subruta (el caso
+de los *project sites* de GitHub Pages); el workflow lo calcula solo.
+
 ## Puertos locales
 
 | Servicio | Puerto |

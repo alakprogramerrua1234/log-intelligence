@@ -157,6 +157,9 @@ uv run --directory apps/api python scripts/export_openapi.py
 pnpm --filter web generate:types
 pnpm --filter web check:types
 
+# Build de la demo estática (sin backend, datos de mock-data.ts)
+NEXT_OUTPUT_EXPORT=true NEXT_PUBLIC_USE_MOCK=true pnpm --filter web build   # -> apps/web/out
+
 # Lint / format
 pnpm --filter web lint
 pnpm --filter web typecheck

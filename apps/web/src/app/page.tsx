@@ -1,16 +1,42 @@
 import Link from "next/link"
 import { ArrowRight, Database, FlaskConical, GitBranch, Plus, Server, Shield, Users } from "lucide-react"
-import { getMockLogs } from "@/lib/mock-data"
+import { getMockLogs, MOCK_PLATFORM_SLUG, MOCK_SAMPLE_COUNTS } from "@/lib/mock-data"
 import { PLATFORM_GROUPS } from "@/lib/platforms"
 import { formatCount } from "@/lib/format"
+import { USE_MOCK } from "@/lib/api"
 
-// TODO: replace with `await fetch("/api/v1/platforms")` once API is live
-const MOCK_STATS = [
-  { label: "Logs indexed", value: "4,190", icon: Database },
-  { label: "Techniques covered", value: "612", icon: Shield },
-  { label: "Platforms", value: "11", icon: Server },
-  { label: "Log sources", value: "49", icon: GitBranch },
+// Ninguna cifra de esta página está escrita a mano. En la demo salen de la
+// muestra empaquetada; fuera de ella son "—", porque no hay endpoint que las
+// sirva todavía y un número inventado se lee igual que uno real.
+// TODO: sustituir por `await api.platforms.list()` cuando exista /platforms.
+const STATS = [
+  { label: "Logs indexed", value: USE_MOCK ? MOCK_SAMPLE_COUNTS.logs : null, icon: Database },
+  { label: "Techniques covered", value: USE_MOCK ? MOCK_SAMPLE_COUNTS.techniques : null, icon: Shield },
+  { label: "Platforms", value: USE_MOCK ? MOCK_SAMPLE_COUNTS.platforms : null, icon: Server },
+  { label: "Log sources", value: USE_MOCK ? MOCK_SAMPLE_COUNTS.log_sources : null, icon: GitBranch },
 ]
+
+interface PlatformCounts {
+  logs: number | null
+  sources: number | null
+  techniques: number | null
+}
+
+const NO_COUNTS: PlatformCounts = { logs: null, sources: null, techniques: null }
+
+function countsFor(slug: string): PlatformCounts {
+  if (!USE_MOCK || slug !== MOCK_PLATFORM_SLUG) return NO_COUNTS
+  return {
+    logs: MOCK_SAMPLE_COUNTS.logs,
+    sources: MOCK_SAMPLE_COUNTS.log_sources,
+    techniques: MOCK_SAMPLE_COUNTS.techniques,
+  }
+}
+
+/** Un contador ausente se pinta como "—", nunca como 0. */
+function Count({ value }: { value: number | null }) {
+  return <>{value === null ? "—" : formatCount(value)}</>
+}
 
 function rankColor(relevance: number): string {
   if (relevance >= 85) return "text-hi"
@@ -25,14 +51,31 @@ export default function HomePage() {
 
   return (
     <main className="flex-1 bg-background">
+      {/* Aviso de demo: sin él, las cifras de abajo se leen como reales */}
+      {USE_MOCK && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-amber-500/40 bg-amber-500/10 px-4 py-1.5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+            Sample data
+          </span>
+          <span className="text-[10px] text-amber-800/90 dark:text-amber-200/80">
+            Demo build. Every figure on this page comes from a {MOCK_SAMPLE_COUNTS.logs}-log Windows
+            sample bundled with the frontend — no dataset has been ingested.
+          </span>
+        </div>
+      )}
+
       {/* Stats bar */}
       <div className="border-b border-line bg-surface-1">
         <div className="mx-auto max-w-7xl px-4 py-2.5">
           <div className="flex items-center gap-7 overflow-x-auto">
-            {MOCK_STATS.map(({ label, value, icon: Icon }) => (
+            {STATS.map(({ label, value, icon: Icon }) => (
               <div key={label} className="flex shrink-0 items-center gap-2">
                 <Icon className="h-3.5 w-3.5 text-accent" />
-                <span className="font-mono text-sm font-semibold text-accent">{value}</span>
+                <span
+                  className={`font-mono text-sm font-semibold ${value === null ? "text-faint" : "text-accent"}`}
+                >
+                  <Count value={value} />
+                </span>
                 <span className="text-xs text-dim">{label}</span>
               </div>
             ))}
@@ -90,6 +133,7 @@ export default function HomePage() {
             <div className="mb-3 flex items-baseline gap-2">
               <h2 className="text-sm font-semibold text-foreground">Top logs</h2>
               <span className="text-[11px] text-dim">by relevance ranking</span>
+              <span className="font-mono text-[10px] text-faint">sample</span>
             </div>
             <ol className="flex flex-col gap-0.5">
               {topLogs.map((log, i) => (
@@ -157,13 +201,21 @@ export default function HomePage() {
                         <span className="text-[13px] font-medium text-foreground transition-colors group-hover:text-accent">
                           {platform.name}
                         </span>
-                        <span className="font-mono text-xs font-bold tabular-nums text-accent">
-                          {formatCount(platform.log_count)}
+                        <span
+                          className={`font-mono text-xs font-bold tabular-nums ${
+                            countsFor(platform.slug).logs === null ? "text-faint" : "text-accent"
+                          }`}
+                        >
+                          <Count value={countsFor(platform.slug).logs} />
                         </span>
                       </span>
                       <span className="mt-px flex gap-3 font-mono text-[10px] text-faint">
-                        <span>{platform.source_count} sources</span>
-                        <span>{platform.technique_count} techniques</span>
+                        <span>
+                          <Count value={countsFor(platform.slug).sources} /> sources
+                        </span>
+                        <span>
+                          <Count value={countsFor(platform.slug).techniques} /> techniques
+                        </span>
                       </span>
                     </Link>
                   ))}
@@ -177,7 +229,9 @@ export default function HomePage() {
         <div className="mt-8 flex items-center gap-2 border-t border-line-soft pt-4">
           <span className="font-mono text-[11px] text-faint">dataset</span>
           <span className="font-mono text-[11px] text-faint">—</span>
-          <span className="font-mono text-[11px] text-dim">not ingested yet</span>
+          <span className="font-mono text-[11px] text-dim">
+            {USE_MOCK ? "bundled sample (not the upstream dataset)" : "not ingested yet"}
+          </span>
         </div>
       </div>
     </main>

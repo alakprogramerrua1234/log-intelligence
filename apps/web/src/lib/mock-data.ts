@@ -1,7 +1,8 @@
-// Mock data used when USE_MOCK = true in LogTableClient.tsx.
-// Replace calls to this module with real API calls when the backend is ready.
+// Muestra fija que sustituye a la API cuando NEXT_PUBLIC_USE_MOCK=true.
+// Es lo que sirve la demo estática de GitHub Pages, que no tiene backend.
+// No es el dataset real: son ocho logs de Windows escritos a mano.
 
-import type { FilterCategory, Log, PaginatedLogs } from "@/lib/types"
+import type { FilterCategory, Log, PaginatedLogs, Platform, SuggestItem } from "@/lib/types"
 
 export const MOCK_FILTER_CATEGORIES: FilterCategory[] = [
   { key: "platform",     label: "Platform",     source_table: "platform",     value_column: "name", detection_fk: "platform_id",     value_type: "enum",   ui_hint: "dropdown",    order: 1, enabled: true },
@@ -12,7 +13,7 @@ export const MOCK_FILTER_CATEGORIES: FilterCategory[] = [
   { key: "subtechnique", label: "Sub-technique",source_table: "subtechnique", value_column: "id",   detection_fk: "subtechnique_id", value_type: "string", ui_hint: "multiselect", order: 6, enabled: true },
 ]
 
-const MOCK_LOGS: Log[] = [
+export const MOCK_LOGS: Log[] = [
   {
     id: "a1b2c3d4-0001",
     log_source_id: "src-sysmon",
@@ -132,8 +133,16 @@ const MOCK_LOGS: Log[] = [
   },
 ]
 
+// Todos los logs de la muestra son de Windows. Filtrar por cualquier otra
+// plataforma tiene que devolver vacío, no enseñar los de Windows igualmente.
+export const MOCK_PLATFORM_SLUG = "windows"
+
 export function getMockLogs(filters: Record<string, string[]>, q: string): PaginatedLogs {
   let items = [...MOCK_LOGS]
+
+  if (filters.platform?.length && !filters.platform.includes(MOCK_PLATFORM_SLUG)) {
+    items = []
+  }
 
   if (q) {
     const lower = q.toLowerCase()
@@ -160,4 +169,78 @@ export function getMockLogs(filters: Record<string, string[]>, q: string): Pagin
   }
 
   return { items, next_cursor: null, total: items.length }
+}
+
+// ─── Derivados de la muestra ──────────────────────────────────────────────────
+// La demo sirve /filters/values, /filters/suggest y los conteos de la landing
+// desde aquí, así que ninguna cifra de la demo está escrita a mano.
+
+function distinct(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort()
+}
+
+function valuesForCategory(category: string): string[] {
+  switch (category) {
+    case "platform":
+      return [MOCK_PLATFORM_SLUG]
+    case "log_source":
+      return distinct(MOCK_LOGS.map((l) => l.log_source_name))
+    case "event_id":
+      return distinct(MOCK_LOGS.map((l) => l.event_id ?? ""))
+    case "tactic":
+      return distinct(MOCK_LOGS.flatMap((l) => l.techniques.flatMap((t) => t.tactic)))
+    case "technique":
+      return distinct(MOCK_LOGS.flatMap((l) => l.techniques.map((t) => t.technique_id)))
+    case "subtechnique":
+      return distinct(
+        MOCK_LOGS.flatMap((l) =>
+          l.techniques.filter((t) => t.id !== t.technique_id).map((t) => t.id),
+        ),
+      )
+    default:
+      return []
+  }
+}
+
+export function getMockFilterValues(category: string, q?: string): string[] {
+  const values = valuesForCategory(category)
+  if (!q) return values
+  const lower = q.toLowerCase()
+  return values.filter((v) => v.toLowerCase().includes(lower))
+}
+
+export function getMockSuggestions(q: string): SuggestItem[] {
+  if (!q) return []
+  const lower = q.toLowerCase()
+  const out: SuggestItem[] = []
+
+  for (const category of MOCK_FILTER_CATEGORIES) {
+    for (const value of valuesForCategory(category.key)) {
+      if (!value.toLowerCase().includes(lower)) continue
+      out.push({ display: value, value, category: category.key, label: category.label })
+      if (out.length >= 20) return out
+    }
+  }
+
+  return out
+}
+
+export const MOCK_PLATFORMS: Platform[] = [
+  {
+    id: "plat-windows",
+    slug: MOCK_PLATFORM_SLUG,
+    name: "Windows",
+    category: "os",
+    log_count: MOCK_LOGS.length,
+    source_count: valuesForCategory("log_source").length,
+  },
+]
+
+// Lo que la muestra contiene de verdad. La landing pinta esto en lugar de
+// totales inventados, y "—" para lo que no cubre.
+export const MOCK_SAMPLE_COUNTS = {
+  logs: MOCK_LOGS.length,
+  log_sources: valuesForCategory("log_source").length,
+  techniques: valuesForCategory("technique").length,
+  platforms: 1,
 }

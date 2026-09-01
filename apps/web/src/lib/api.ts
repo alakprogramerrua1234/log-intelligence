@@ -6,6 +6,24 @@ import type {
   Platform,
   SuggestItem,
 } from "@/lib/types"
+import {
+  getMockFilterValues,
+  getMockLogs,
+  getMockSuggestions,
+  MOCK_FILTER_CATEGORIES,
+  MOCK_LOGS,
+  MOCK_PLATFORMS,
+} from "@/lib/mock-data"
+
+/**
+ * Único punto de conmutación entre la API real y la muestra empaquetada.
+ *
+ * La demo estática de GitHub Pages se construye con NEXT_PUBLIC_USE_MOCK=true y
+ * no tiene backend detrás: `api` resuelve entonces desde `mock-data.ts`. Todo lo
+ * demás — hooks, componentes — llama igual en los dos modos, así que no hay
+ * ramas de mock repartidas por la UI.
+ */
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001/api/v1"
 
@@ -60,7 +78,7 @@ export interface LogsQuery {
   limit?: number
 }
 
-export const api = {
+const realApi = {
   platforms: {
     list: () => request<Platform[]>("/platforms"),
     get: (slug: string) => request<Platform>(`/platforms/${slug}`),
@@ -95,3 +113,74 @@ export const api = {
       request<SuggestItem[]>(`/filters/suggest?q=${encodeURIComponent(q)}`),
   },
 }
+
+// ── Implementación de la muestra ──────────────────────────────────────────────
+// Misma forma que `realApi`, resuelta en memoria. Respeta orden y paginación
+// para que la tabla se comporte igual que contra la API.
+
+/** Claves ordenables de la tabla → valor por el que comparar. */
+const SORT_KEYS: Record<string, (log: Log) => string | number> = {
+  relevance: (l) => l.relevance,
+  event_id: (l) => Number(l.event_id ?? 0),
+  name: (l) => l.name,
+  log_source_name: (l) => l.log_source_name,
+}
+
+function sortLogs(items: Log[], sortBy?: string, sortDir?: "asc" | "desc"): Log[] {
+  const key = sortBy ? SORT_KEYS[sortBy] : undefined
+  if (!key) return items
+  const dir = sortDir === "desc" ? -1 : 1
+  return [...items].sort((a, b) => {
+    const va = key(a)
+    const vb = key(b)
+    if (va === vb) return 0
+    return (va < vb ? -1 : 1) * dir
+  })
+}
+
+/** El cursor es opaco para la UI; aquí basta con el offset de la página. */
+function parseCursor(cursor?: string): number {
+  const offset = Number(cursor)
+  return Number.isFinite(offset) && offset > 0 ? offset : 0
+}
+
+const mockApi: typeof realApi = {
+  platforms: {
+    list: async () => MOCK_PLATFORMS,
+    get: async (slug: string) => {
+      const platform = MOCK_PLATFORMS.find((p) => p.slug === slug)
+      if (!platform) throw new ApiError(404, `/platforms/${slug}`, null)
+      return platform
+    },
+  },
+  logs: {
+    list: async (query: LogsQuery = {}) => {
+      const all = sortLogs(
+        getMockLogs(query.filters ?? {}, query.q ?? "").items,
+        query.sort_by,
+        query.sort_dir,
+      )
+      const offset = parseCursor(query.cursor)
+      const limit = query.limit ?? all.length
+      const items = all.slice(offset, offset + limit)
+      const nextOffset = offset + items.length
+      return {
+        items,
+        next_cursor: nextOffset < all.length ? String(nextOffset) : null,
+        total: all.length,
+      }
+    },
+    get: async (id: string) => {
+      const log = MOCK_LOGS.find((l) => l.id === id)
+      if (!log) throw new ApiError(404, `/logs/${id}`, null)
+      return log
+    },
+  },
+  filters: {
+    categories: async () => MOCK_FILTER_CATEGORIES,
+    values: async (category: string, q?: string) => getMockFilterValues(category, q),
+    suggest: async (q: string) => getMockSuggestions(q),
+  },
+}
+
+export const api = USE_MOCK ? mockApi : realApi

@@ -1,0 +1,67 @@
+# Publica el frontend como demo estática en GitHub Pages.
+#
+# Solo se ejecuta desde la rama `demo`: `development` y `main` quedan fuera del
+# camino de despliegue. La demo corre entera en el navegador — con
+# NEXT_PUBLIC_USE_MOCK=true, src/lib/api.ts resuelve desde src/lib/mock-data.ts
+# en vez de llamar a FastAPI — así que no se despliega backend ni base de datos.
+# Es un escaparate de UI, no el producto.
+name: Deploy demo (GitHub Pages)
+
+on:
+  push:
+    branches: [demo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un despliegue a la vez; los encolados se sustituyen entre sí.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --filter web
+
+      # Los project sites cuelgan de /<repo>, así que las URLs de los assets
+      # necesitan ese prefijo.
+      - name: Resolve base path
+        run: echo "NEXT_BASE_PATH=/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+
+      - run: pnpm --filter web build
+        env:
+          NEXT_OUTPUT_EXPORT: "true"
+          NEXT_PUBLIC_USE_MOCK: "true"
+
+      # Sin esto, Pages pasa Jekyll por encima y se come el directorio _next/.
+      - run: touch apps/web/out/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

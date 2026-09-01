@@ -1,11 +1,5 @@
 "use client"
 
-// ─── Data source switch ───────────────────────────────────────────────────────
-// Toggle USE_MOCK to false when the backend API is ready.
-// The real data path uses useLogsQuery (TanStack Query → api.logs.list).
-const USE_MOCK = false
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useMemo, useRef, useState } from "react"
 import {
   useReactTable,
@@ -19,7 +13,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useFilterParams } from "@/hooks/useFilterParams"
 import { useLogsInfiniteQuery } from "@/hooks/useLogsQuery"
-import { getMockLogs, MOCK_FILTER_CATEGORIES } from "@/lib/mock-data"
+import { MOCK_FILTER_CATEGORIES, MOCK_SAMPLE_COUNTS } from "@/lib/mock-data"
 import { FilterChips } from "@/components/filters/FilterChips"
 import { ViewToggle } from "@/components/log-table/ViewToggle"
 import { CommandPalette } from "@/components/filters/CommandPalette"
@@ -29,12 +23,13 @@ import {
   PageSizeSelect,
   type PageSize,
 } from "@/components/log-table/PageSizeSelect"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, USE_MOCK } from "@/lib/api"
 import { UNKNOWN_FILTER_CATEGORY, type FilterCategory, type Log } from "@/lib/types"
 import { formatCount } from "@/lib/format"
 
 interface LogTableClientProps {
-  // Categories come from /filters/categories; fallback to mock when USE_MOCK
+  // Categories come from /filters/categories; MOCK_FILTER_CATEGORIES es el
+  // último recurso mientras la API no responde.
   categories?: FilterCategory[]
 }
 
@@ -49,30 +44,32 @@ export function LogTableClient({ categories }: LogTableClientProps) {
   const categoriesQuery = useQuery({
     queryKey: ["filter-categories"],
     queryFn: api.filters.categories,
-    enabled: !USE_MOCK,
     staleTime: Infinity,
   })
 
   // Precedence: API data → prop → mock fallback
-  const resolvedCategories: FilterCategory[] = USE_MOCK
-    ? MOCK_FILTER_CATEGORIES
-    : (categoriesQuery.data?.length ? categoriesQuery.data : (categories?.length ? categories : MOCK_FILTER_CATEGORIES))
+  const resolvedCategories: FilterCategory[] = categoriesQuery.data?.length
+    ? categoriesQuery.data
+    : categories?.length
+      ? categories
+      : MOCK_FILTER_CATEGORIES
 
   // ── Data ──────────────────────────────────────────────────────────────────
-  // MOCK path: synchronous, no network.
-  const mockResult = useMemo(() => (USE_MOCK ? getMockLogs(filters, q) : null), [filters, q])
-
-  // REAL path: swap USE_MOCK to false and this hook takes over.
+  // Un solo camino. En la demo estática (USE_MOCK) `api` resuelve desde
+  // `mock-data.ts` y este hook no llega a tocar la red.
   // La ordenación es server-driven: viaja a la API y vuelve paginada. Cambiarla
   // invalida el cursor en el backend, así que la query arranca de cero sola.
   const sortBy  = sorting[0]?.id
   const sortDir = sorting[0]?.desc ? "desc" : "asc"
 
-  const realQuery = useLogsInfiniteQuery(
-    USE_MOCK
-      ? { q: "", filters: {}, view: "full" } // disabled — hook still runs but result is ignored
-      : { q, filters, view, sort_by: sortBy, sort_dir: sortDir, limit: pageSize },
-  )
+  const realQuery = useLogsInfiniteQuery({
+    q,
+    filters,
+    view,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    limit: pageSize,
+  })
 
   // Posición dentro de las páginas ya traídas.
   //
@@ -99,16 +96,13 @@ export function LogTableClient({ categories }: LogTableClientProps) {
   // render con otro array nuevo: un bucle de commits infinito pero silencioso.
   // Al primer evento de input real, React drena ese trabajo pendiente en un
   // flush síncrono que nunca termina y /explore se congela por completo.
-  const logs = useMemo<Log[]>(
-    () => (USE_MOCK ? (mockResult?.items ?? []) : (currentPage?.items ?? [])),
-    [mockResult, currentPage],
-  )
-  const total = USE_MOCK ? (mockResult?.total ?? 0) : (pages?.[0]?.total ?? 0)
+  const logs = useMemo<Log[]>(() => currentPage?.items ?? [], [currentPage])
+  const total = pages?.[0]?.total ?? 0
   // `isPending`, no `isLoading`: cubre también el caso en que React Query deja
   // el fetch en pausa. Sin esto la tabla pinta "No logs match the current
   // filters" mientras la query aún no ha resuelto, que es sencillamente falso.
-  const isLoading = !USE_MOCK && realQuery.isPending
-  const isError = !USE_MOCK && realQuery.isError
+  const isLoading = realQuery.isPending
+  const isError = realQuery.isError
 
   // La API rechaza categorías de filtro que no existen en vez de ignorarlas.
   // Suele venir de una URL compartida que quedó obsoleta.
@@ -127,7 +121,8 @@ export function LogTableClient({ categories }: LogTableClientProps) {
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    manualSorting: !USE_MOCK,
+    // Siempre server-driven: la muestra de la demo también ordena en `api`.
+    manualSorting: true,
     meta: {
       openPaletteWithCategory: (categoryKey: string) => {
         const cat = resolvedCategories.find((c) => c.key === categoryKey) ?? null
@@ -225,12 +220,15 @@ export function LogTableClient({ categories }: LogTableClientProps) {
         </div>
       </div>
 
-      {/* ── Mock badge ── */}
+      {/* ── Aviso de demo ── */}
       {USE_MOCK && (
-        <div className="flex items-center gap-2 border-b border-dashed border-amber-900/50 bg-amber-950/20 px-4 py-1.5">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-600">Mock data</span>
-          <span className="text-[10px] text-amber-800">
-            Set USE_MOCK = false in LogTableClient.tsx to connect the real API.
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-amber-500/40 bg-amber-500/10 px-4 py-1.5">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+            Sample data
+          </span>
+          <span className="text-[10px] text-amber-800/90 dark:text-amber-200/80">
+            Demo build — a fixed {MOCK_SAMPLE_COUNTS.logs}-log Windows sample, not the ingested
+            dataset.
           </span>
         </div>
       )}
@@ -349,7 +347,7 @@ export function LogTableClient({ categories }: LogTableClientProps) {
             {rangeFrom === 0
               ? "no results"
               : `${formatCount(rangeFrom)}–${formatCount(rangeTo)} of ${formatCount(total)}`}
-            {USE_MOCK ? " (mock)" : ""}
+            {USE_MOCK ? " (sample)" : ""}
           </span>
         </div>
 
